@@ -7,14 +7,13 @@ use ckb_traits::BlockMedianTimeContext;
 use ckb_verification::TransactionVerifier;
 use fnv::FnvHashMap;
 use numext_fixed_hash::H256;
-use std::sync::Arc;
 
-struct StoreBlockMedianTimeContext<CS> {
-    store: Arc<CS>,
+struct StoreBlockMedianTimeContext<'a, CS> {
+    store: &'a CS,
     median_time_block_count: u64,
 }
 
-impl<CS: ChainStore> BlockMedianTimeContext for StoreBlockMedianTimeContext<CS> {
+impl<'a, CS: ChainStore<'a>> BlockMedianTimeContext for StoreBlockMedianTimeContext<'a, CS> {
     fn median_block_count(&self) -> u64 {
         self.median_time_block_count
     }
@@ -34,12 +33,12 @@ impl<CS: ChainStore> BlockMedianTimeContext for StoreBlockMedianTimeContext<CS> 
 
 /// TxPoolExecutor
 /// execute txs in parallel then add them to tx_pool
-pub struct TxPoolExecutor<CS> {
-    shared: Shared<CS>,
+pub struct TxPoolExecutor {
+    shared: Shared,
 }
 
-impl<CS: ChainStore> TxPoolExecutor<CS> {
-    pub fn new(shared: Shared<CS>) -> TxPoolExecutor<CS> {
+impl TxPoolExecutor {
+    pub fn new(shared: Shared) -> TxPoolExecutor {
         TxPoolExecutor { shared }
     }
 
@@ -95,10 +94,10 @@ impl<CS: ChainStore> TxPoolExecutor<CS> {
             return Err(err.to_owned());
         }
 
-        let store = Arc::clone(&self.shared.store());
+        let store = self.shared.store();
         let max_block_cycles = consensus.max_block_cycles();
         let block_median_time_context = StoreBlockMedianTimeContext {
-            store: Arc::clone(&store),
+            store,
             median_time_block_count: consensus.median_time_block_count() as u64,
         };
 
@@ -113,7 +112,7 @@ impl<CS: ChainStore> TxPoolExecutor<CS> {
                     epoch_number,
                     &consensus,
                     self.shared.script_config(),
-                    &store,
+                    store,
                 )
                 .verify(max_block_cycles)
                 .map(|cycles| (tx, cycles))

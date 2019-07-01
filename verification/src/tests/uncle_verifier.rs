@@ -141,8 +141,8 @@ fn dummy_context(
     shared: &Shared<ChainKVStore<MemoryKeyValueDB>>,
 ) -> ForkContext<Shared<ChainKVStore<MemoryKeyValueDB>>> {
     ForkContext {
-        attached_blocks: vec![],
-        detached_blocks: vec![],
+        attached: vec![],
+        detached: vec![],
         provider: shared.clone(),
     }
 }
@@ -530,8 +530,8 @@ fn test_uncle_verifier_with_fork_context() {
     let new_block = gen_block(chain2_tip_header, 1019, &epoch);
 
     let context = ForkContext {
-        attached_blocks: chain2[10..18].iter().collect(),
-        detached_blocks: chain1[10..19].iter().collect(),
+        attached: chain2[10..18].iter().collect(),
+        detached: chain1[10..19].iter().collect(),
         provider: shared.clone(),
     };
 

@@ -52,12 +52,16 @@ members = [
     "pow",
     "benches",
     "resource",
-    "indexer",
+    # "indexer",
 ]
 
 [profile.release]
 debug = true
 overflow-checks = true
+codegen-units = 1
 
 [target.'cfg(unix)'.dependencies]
 jemallocator = { version = "0.3.0" }
+
+[profile.dev]
+codegen-units = 1

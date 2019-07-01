@@ -7,10 +7,10 @@ use ckb_core::header::Header;
 use ckb_core::script::Script;
 use ckb_core::Capacity;
 use ckb_core::Cycle;
-use ckb_db::{DBConfig, KeyValueDB, MemoryKeyValueDB, RocksDB};
+use ckb_db::{DBConfig, RocksDB};
 use ckb_reward_calculator::RewardCalculator;
 use ckb_script::ScriptConfig;
-use ckb_store::{ChainKVStore, ChainStore, StoreConfig, COLUMNS};
+use ckb_store::{ChainDB, ChainStore, StoreConfig, COLUMNS};
 use ckb_traits::ChainProvider;
 use ckb_util::{lock_or_panic, Mutex, MutexGuard};
 use failure::Error as FailureError;
@@ -20,17 +20,16 @@ use std::sync::Arc;
 
 const TXS_VERIFY_CACHE_SIZE: usize = 10_000;
 
-#[derive(Debug)]
-pub struct Shared<CS> {
-    store: Arc<CS>,
-    chain_state: Arc<Mutex<ChainState<CS>>>,
+pub struct Shared {
+    store: Arc<ChainDB>,
+    chain_state: Arc<Mutex<ChainState>>,
     txs_verify_cache: Arc<Mutex<LruCache<H256, Cycle>>>,
     consensus: Arc<Consensus>,
     script_config: ScriptConfig,
 }
 
 // https://github.com/rust-lang/rust/issues/40754
-impl<CS: ChainStore> ::std::clone::Clone for Shared<CS> {
+impl ::std::clone::Clone for Shared {
     fn clone(&self) -> Self {
         Shared {
             store: Arc::clone(&self.store),
@@ -42,9 +41,9 @@ impl<CS: ChainStore> ::std::clone::Clone for Shared<CS> {
     }
 }
 
-impl<CS: ChainStore> Shared<CS> {
+impl Shared {
     pub fn init(
-        store: CS,
+        store: ChainDB,
         consensus: Consensus,
         tx_pool_config: TxPoolConfig,
         script_config: ScriptConfig,
@@ -68,7 +67,7 @@ impl<CS: ChainStore> Shared<CS> {
         })
     }
 
-    pub fn lock_chain_state(&self) -> MutexGuard<ChainState<CS>> {
+    pub fn lock_chain_state(&self) -> MutexGuard<ChainState> {
         lock_or_panic(&self.chain_state)
     }
 
@@ -77,10 +76,10 @@ impl<CS: ChainStore> Shared<CS> {
     }
 }
 
-impl<CS: ChainStore> ChainProvider for Shared<CS> {
-    type Store = CS;
+impl ChainProvider for Shared {
+    type Store = ChainDB;
 
-    fn store(&self) -> &Arc<CS> {
+    fn store(&self) -> &Self::Store {
         &self.store
     }
 
@@ -112,7 +111,7 @@ impl<CS: ChainStore> ChainProvider for Shared<CS> {
     }
 
     fn finalize_block_reward(&self, parent: &Header) -> Result<(Script, Capacity), FailureError> {
-        RewardCalculator::new(self).block_reward(parent)
+        RewardCalculator::new(&self.consensus, self.store()).block_reward(parent)
     }
 
     fn consensus(&self) -> &Consensus {
@@ -120,15 +119,15 @@ impl<CS: ChainStore> ChainProvider for Shared<CS> {
     }
 }
 
-pub struct SharedBuilder<DB: KeyValueDB> {
-    db: Option<DB>,
+pub struct SharedBuilder {
+    db: Option<RocksDB>,
     consensus: Option<Consensus>,
     tx_pool_config: Option<TxPoolConfig>,
     script_config: Option<ScriptConfig>,
     store_config: Option<StoreConfig>,
 }
 
-impl<DB: KeyValueDB> Default for SharedBuilder<DB> {
+impl Default for SharedBuilder {
     fn default() -> Self {
         SharedBuilder {
             db: None,
@@ -140,19 +139,7 @@ impl<DB: KeyValueDB> Default for SharedBuilder<DB> {
     }
 }
 
-impl SharedBuilder<MemoryKeyValueDB> {
-    pub fn new() -> Self {
-        SharedBuilder {
-            db: Some(MemoryKeyValueDB::open(COLUMNS as usize)),
-            consensus: None,
-            tx_pool_config: None,
-            script_config: None,
-            store_config: None,
-        }
-    }
-}
-
-impl SharedBuilder<RocksDB> {
+impl SharedBuilder {
     pub fn new() -> Self {
         Default::default()
     }
@@ -165,7 +152,7 @@ impl SharedBuilder<RocksDB> {
 
 pub const MIN_TXS_VERIFY_CACHE_SIZE: Option<usize> = Some(100);
 
-impl<DB: KeyValueDB> SharedBuilder<DB> {
+impl SharedBuilder {
     pub fn consensus(mut self, value: Consensus) -> Self {
         self.consensus = Some(value);
         self
@@ -186,8 +173,8 @@ impl<DB: KeyValueDB> SharedBuilder<DB> {
         self
     }
 
-    pub fn build(self) -> Result<Shared<ChainKVStore<DB>>, SharedError> {
-        let store = ChainKVStore::with_config(
+    pub fn build(self) -> Result<Shared, SharedError> {
+        let store = ChainDB::with_config(
             self.db.unwrap(),
             self.store_config.unwrap_or_else(Default::default),
         );

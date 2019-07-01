@@ -90,8 +90,8 @@ impl BlockAssemblerController {
     }
 }
 
-pub struct BlockAssembler<CS> {
-    shared: Shared<CS>,
+pub struct BlockAssembler {
+    shared: Shared,
     config: BlockAssemblerConfig,
     work_id: AtomicUsize,
     last_uncles_updated_at: AtomicU64,
@@ -99,8 +99,8 @@ pub struct BlockAssembler<CS> {
     proof_size: usize,
 }
 
-impl<CS: ChainStore + 'static> BlockAssembler<CS> {
-    pub fn new(shared: Shared<CS>, config: BlockAssemblerConfig) -> Self {
+impl BlockAssembler {
+    pub fn new(shared: Shared, config: BlockAssemblerConfig) -> Self {
         Self {
             proof_size: shared.consensus().pow_engine().proof_size(),
             shared,
@@ -363,7 +363,7 @@ impl<CS: ChainStore + 'static> BlockAssembler<CS> {
                 }
             })
             .map_err(|_| Error::InvalidInput)?;
-        let dao = DaoCalculator::new(&chain_state.consensus(), Arc::clone(chain_state.store()))
+        let dao = DaoCalculator::new(&chain_state.consensus(), chain_state.store())
             .dao_field(&rtxs, &tip_header)?;
 
         // Release the lock as soon as possible, let other services do their work

@@ -4,7 +4,6 @@ use ckb_jsonrpc_types::Block;
 use ckb_logger::error;
 use ckb_network::NetworkController;
 use ckb_shared::shared::Shared;
-use ckb_store::ChainStore;
 use jsonrpc_core::Result;
 use jsonrpc_derive::rpc;
 use numext_fixed_hash::H256;
@@ -24,13 +23,13 @@ pub trait IntegrationTestRpc {
     fn process_block_without_verify(&self, data: Block) -> Result<Option<H256>>;
 }
 
-pub(crate) struct IntegrationTestRpcImpl<CS> {
+pub(crate) struct IntegrationTestRpcImpl {
     pub network_controller: NetworkController,
-    pub shared: Shared<CS>,
+    pub shared: Shared,
     pub chain: ChainController,
 }
 
-impl<CS: ChainStore + 'static> IntegrationTestRpc for IntegrationTestRpcImpl<CS> {
+impl IntegrationTestRpc for IntegrationTestRpcImpl {
     fn add_node(&self, peer_id: String, address: String) -> Result<()> {
         self.network_controller.add_node(
             &peer_id.parse().expect("invalid peer_id"),

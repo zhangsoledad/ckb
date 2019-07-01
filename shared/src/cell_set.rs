@@ -6,7 +6,6 @@ use ckb_util::{FnvHashMap, FnvHashSet};
 use numext_fixed_hash::H256;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::hash_map;
-use std::sync::Arc;
 
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct CellSetDiff {
@@ -80,10 +79,10 @@ impl CellSet {
         }
     }
 
-    pub fn new_overlay<'a, CS: ChainStore>(
+    pub fn new_overlay<'a, CS: ChainStore<'a>>(
         &'a self,
         diff: &CellSetDiff,
-        store: &Arc<CS>,
+        store: &'a CS,
     ) -> CellSetOverlay<'a> {
         let mut new = FnvHashMap::default();
         let mut removed = FnvHashSet::default();

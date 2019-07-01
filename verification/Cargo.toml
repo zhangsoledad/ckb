@@ -25,6 +25,7 @@ ckb-logger = {path = "../util/logger"}
 failure = "0.1.5"
 ckb-resource = { path = "../resource" }
 ckb-script-data-loader = { path = "../script/data-loader" }
+ckb-reward-calculator= { path = "../util/reward-calculator" }
 
 [dev-dependencies]
 ckb-db = { path = "../db" }

@@ -12,17 +12,16 @@ use ckb_store::{data_loader_wrapper::DataLoaderWrapper, ChainStore};
 use failure::Error as FailureError;
 use numext_fixed_hash::H256;
 use std::cmp::max;
-use std::sync::Arc;
 
 pub struct DaoCalculator<'a, CS, DL> {
     pub consensus: &'a Consensus,
-    pub store: Arc<CS>,
+    pub store: &'a CS,
     pub data_loader: DL,
 }
 
-impl<'a, CS: ChainStore> DaoCalculator<'a, CS, DataLoaderWrapper<CS>> {
-    pub fn new(consensus: &'a Consensus, store: Arc<CS>) -> Self {
-        let data_loader = DataLoaderWrapper::new(Arc::clone(&store));
+impl<'a, CS: ChainStore<'a>> DaoCalculator<'a, CS, DataLoaderWrapper<'a, CS>> {
+    pub fn new(consensus: &'a Consensus, store: &'a CS) -> Self {
+        let data_loader = DataLoaderWrapper::new(store);
         DaoCalculator {
             consensus,
             store,
@@ -76,7 +75,8 @@ impl<'a, CS: ChainStore> DaoCalculator<'a, CS, DataLoaderWrapper<CS>> {
             .ok_or(Error::InvalidHeader)?;
         let target = self
             .store
-            .get_ancestor(parent.hash(), target_number)
+            .get_block_hash(target_number)
+            .and_then(|hash| self.store.get_block_header(&hash))
             .ok_or(Error::InvalidHeader)?;
 
         let primary_block_reward = self.primary_block_reward(&target)?;
@@ -124,7 +124,8 @@ impl<'a, CS: ChainStore> DaoCalculator<'a, CS, DataLoaderWrapper<CS>> {
                 .ok_or(Error::InvalidHeader)?;
             let target = self
                 .store
-                .get_ancestor(parent.hash(), target_number)
+                .get_block_hash(target_number)
+                .and_then(|hash| self.store.get_block_header(&hash))
                 .ok_or(Error::InvalidHeader)?;
             let target_epoch = self
                 .store

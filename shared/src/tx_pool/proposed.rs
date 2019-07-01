@@ -89,8 +89,8 @@ pub(crate) struct ProposedPool {
     pub(crate) edges: Edges<OutPoint, ProposalShortId>,
 }
 
-impl CellProvider for ProposedPool {
-    fn cell(&self, o: &OutPoint) -> CellStatus {
+impl<'a> CellProvider<'a> for ProposedPool {
+    fn cell(&'a self, o: &OutPoint) -> CellStatus {
         if o.cell.is_none() {
             return CellStatus::Unspecified;
         }

@@ -201,7 +201,7 @@ fn new_chain(
     consensus.cellbase_maturity = 0;
 
     let db_dir = tempdir().unwrap();
-    let shared = SharedBuilder::<RocksDB>::default()
+    let shared = SharedBuilder::default()
         .db(&DBConfig {
             path: db_dir.path().to_owned(),
             options: None,

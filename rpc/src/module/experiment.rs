@@ -14,7 +14,6 @@ use ckb_verification::ScriptVerifier;
 use jsonrpc_core::{Error, Result};
 use jsonrpc_derive::rpc;
 use numext_fixed_hash::H256;
-use std::sync::Arc;
 
 #[rpc]
 pub trait ExperimentRpc {
@@ -37,11 +36,11 @@ pub trait ExperimentRpc {
         -> Result<Capacity>;
 }
 
-pub(crate) struct ExperimentRpcImpl<CS> {
-    pub shared: Shared<CS>,
+pub(crate) struct ExperimentRpcImpl {
+    pub shared: Shared,
 }
 
-impl<CS: ChainStore + 'static> ExperimentRpc for ExperimentRpcImpl<CS> {
+impl ExperimentRpc for ExperimentRpcImpl {
     fn compute_transaction_hash(&self, tx: Transaction) -> Result<H256> {
         let tx: CoreTransaction = tx.into();
         Ok(tx.hash().to_owned())
@@ -67,7 +66,7 @@ impl<CS: ChainStore + 'static> ExperimentRpc for ExperimentRpcImpl<CS> {
     fn calculate_dao_maximum_withdraw(&self, out_point: OutPoint, hash: H256) -> Result<Capacity> {
         let chain_state = self.shared.lock_chain_state();
         let consensus = &chain_state.consensus();
-        let calculator = DaoCalculator::new(consensus, Arc::clone(chain_state.store()));
+        let calculator = DaoCalculator::new(consensus, chain_state.store());
         match calculator.maximum_withdraw(&out_point.into(), &hash) {
             Ok(capacity) => Ok(Capacity(capacity)),
             Err(err) => {
@@ -79,11 +78,11 @@ impl<CS: ChainStore + 'static> ExperimentRpc for ExperimentRpcImpl<CS> {
 }
 
 // DryRunner dry run given transaction, and return the result, including execution cycles.
-pub(crate) struct DryRunner<'a, CS> {
-    chain_state: &'a ChainState<CS>,
+pub(crate) struct DryRunner<'a> {
+    chain_state: &'a ChainState,
 }
 
-impl<'a, CS: ChainStore> CellProvider for DryRunner<'a, CS> {
+impl<'a> CellProvider<'a> for DryRunner<'a> {
     fn cell(&self, o: &CoreOutPoint) -> CellStatus {
         if o.cell.is_none() {
             return CellStatus::Unspecified;
@@ -98,7 +97,7 @@ impl<'a, CS: ChainStore> CellProvider for DryRunner<'a, CS> {
     }
 }
 
-impl<'a, CS: ChainStore> HeaderProvider for DryRunner<'a, CS> {
+impl<'a> HeaderProvider<'a> for DryRunner<'a> {
     fn header(&self, o: &CoreOutPoint) -> HeaderStatus {
         if o.block_hash.is_none() {
             return HeaderStatus::Unspecified;
@@ -112,8 +111,8 @@ impl<'a, CS: ChainStore> HeaderProvider for DryRunner<'a, CS> {
     }
 }
 
-impl<'a, CS: ChainStore> DryRunner<'a, CS> {
-    pub(crate) fn new(chain_state: &'a ChainState<CS>) -> Self {
+impl<'a> DryRunner<'a> {
+    pub(crate) fn new(chain_state: &'a ChainState) -> Self {
         Self { chain_state }
     }
 
@@ -124,7 +123,7 @@ impl<'a, CS: ChainStore> DryRunner<'a, CS> {
                 let max_cycles = consensus.max_block_cycles;
                 let script_config = self.chain_state.script_config();
                 let store = self.chain_state.store();
-                match ScriptVerifier::new(&resolved, &store, script_config).verify(max_cycles) {
+                match ScriptVerifier::new(&resolved, store, script_config).verify(max_cycles) {
                     Ok(cycles) => Ok(DryRunResult {
                         cycles: Cycle(cycles),
                     }),

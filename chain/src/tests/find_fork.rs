@@ -1,4 +1,4 @@
-use crate::chain::{ChainService, ForkChanges};
+use crate::chain::{ChainService, Fork};
 use crate::tests::util::{MockChain, MockStore};
 use ckb_chain_spec::consensus::Consensus;
 use ckb_core::block::Block;
@@ -69,20 +69,14 @@ fn test_find_fork_case1() {
         txs_fees: vec![],
     };
 
-    let mut fork = ForkChanges::default();
+    let mut fork = Fork::default();
 
     chain_service.find_fork(&mut fork, tip_number, fork2.tip(), ext);
 
-    let detached_blocks: HashSet<Block> = HashSet::from_iter(fork1.blocks().clone().into_iter());
-    let attached_blocks: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
-    assert_eq!(
-        detached_blocks,
-        HashSet::from_iter(fork.detached_blocks.iter().cloned())
-    );
-    assert_eq!(
-        attached_blocks,
-        HashSet::from_iter(fork.attached_blocks.iter().cloned())
-    );
+    let detached: HashSet<Block> = HashSet::from_iter(fork1.blocks().clone().into_iter());
+    let attached: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
+    assert_eq!(detached, HashSet::from_iter(fork.detached.iter().cloned()));
+    assert_eq!(attached, HashSet::from_iter(fork.attached.iter().cloned()));
 }
 
 // 0--1--2--3--4
@@ -140,20 +134,14 @@ fn test_find_fork_case2() {
         txs_fees: vec![],
     };
 
-    let mut fork = ForkChanges::default();
+    let mut fork = Fork::default();
 
     chain_service.find_fork(&mut fork, tip_number, fork2.tip(), ext);
 
-    let detached_blocks: HashSet<Block> = HashSet::from_iter(fork1.blocks()[1..].iter().cloned());
-    let attached_blocks: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
-    assert_eq!(
-        detached_blocks,
-        HashSet::from_iter(fork.detached_blocks.iter().cloned())
-    );
-    assert_eq!(
-        attached_blocks,
-        HashSet::from_iter(fork.attached_blocks.iter().cloned())
-    );
+    let detached: HashSet<Block> = HashSet::from_iter(fork1.blocks()[1..].iter().cloned());
+    let attached: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
+    assert_eq!(detached, HashSet::from_iter(fork.detached.iter().cloned()));
+    assert_eq!(attached, HashSet::from_iter(fork.attached.iter().cloned()));
 }
 
 // 0--1--2--3
@@ -211,20 +199,14 @@ fn test_find_fork_case3() {
         verified: None,
         txs_fees: vec![],
     };
-    let mut fork = ForkChanges::default();
+    let mut fork = Fork::default();
 
     chain_service.find_fork(&mut fork, tip_number, fork2.tip(), ext);
 
-    let detached_blocks: HashSet<Block> = HashSet::from_iter(fork1.blocks().clone().into_iter());
-    let attached_blocks: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
-    assert_eq!(
-        detached_blocks,
-        HashSet::from_iter(fork.detached_blocks.iter().cloned())
-    );
-    assert_eq!(
-        attached_blocks,
-        HashSet::from_iter(fork.attached_blocks.iter().cloned())
-    );
+    let detached: HashSet<Block> = HashSet::from_iter(fork1.blocks().clone().into_iter());
+    let attached: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
+    assert_eq!(detached, HashSet::from_iter(fork.detached.iter().cloned()));
+    assert_eq!(attached, HashSet::from_iter(fork.attached.iter().cloned()));
 }
 
 // 0--1--2--3--4--5
@@ -283,18 +265,12 @@ fn test_find_fork_case4() {
         txs_fees: vec![],
     };
 
-    let mut fork = ForkChanges::default();
+    let mut fork = Fork::default();
 
     chain_service.find_fork(&mut fork, tip_number, fork2.tip(), ext);
 
-    let detached_blocks: HashSet<Block> = HashSet::from_iter(fork1.blocks().clone().into_iter());
-    let attached_blocks: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
-    assert_eq!(
-        detached_blocks,
-        HashSet::from_iter(fork.detached_blocks.iter().cloned())
-    );
-    assert_eq!(
-        attached_blocks,
-        HashSet::from_iter(fork.attached_blocks.iter().cloned())
-    );
+    let detached: HashSet<Block> = HashSet::from_iter(fork1.blocks().clone().into_iter());
+    let attached: HashSet<Block> = HashSet::from_iter(fork2.blocks().clone().into_iter());
+    assert_eq!(detached, HashSet::from_iter(fork.detached.iter().cloned()));
+    assert_eq!(attached, HashSet::from_iter(fork.attached.iter().cloned()));
 }

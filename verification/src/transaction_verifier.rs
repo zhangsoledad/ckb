@@ -14,7 +14,6 @@ use ckb_traits::BlockMedianTimeContext;
 use lru_cache::LruCache;
 use std::cell::RefCell;
 use std::collections::HashSet;
-use std::sync::Arc;
 
 pub struct ContextualTransactionVerifier<'a, M> {
     pub maturity: MaturityVerifier<'a>,
@@ -58,7 +57,7 @@ pub struct TransactionVerifier<'a, M, CS> {
 impl<'a, M, CS> TransactionVerifier<'a, M, CS>
 where
     M: BlockMedianTimeContext,
-    CS: ChainStore,
+    CS: ChainStore<'a>,
 {
     pub fn new(
         rtx: &'a ResolvedTransaction,
@@ -67,7 +66,7 @@ where
         epoch_number: EpochNumber,
         consensus: &'a Consensus,
         script_config: &'a ScriptConfig,
-        chain_store: &'a Arc<CS>,
+        chain_store: &'a CS,
     ) -> Self {
         TransactionVerifier {
             version: VersionVerifier::new(&rtx.transaction),
@@ -135,15 +134,15 @@ impl<'a> SizeVerifier<'a> {
 }
 
 pub struct ScriptVerifier<'a, CS> {
-    chain_store: &'a Arc<CS>,
+    chain_store: &'a CS,
     resolved_transaction: &'a ResolvedTransaction<'a>,
     script_config: &'a ScriptConfig,
 }
 
-impl<'a, CS: ChainStore> ScriptVerifier<'a, CS> {
+impl<'a, CS: ChainStore<'a>> ScriptVerifier<'a, CS> {
     pub fn new(
         resolved_transaction: &'a ResolvedTransaction,
-        chain_store: &'a Arc<CS>,
+        chain_store: &'a CS,
         script_config: &'a ScriptConfig,
     ) -> Self {
         ScriptVerifier {
@@ -154,7 +153,7 @@ impl<'a, CS: ChainStore> ScriptVerifier<'a, CS> {
     }
 
     pub fn verify(&self, max_cycles: Cycle) -> Result<Cycle, TransactionError> {
-        let data_loader = DataLoaderWrapper::new(Arc::clone(&self.chain_store));
+        let data_loader = DataLoaderWrapper::new(self.chain_store);
         TransactionScriptsVerifier::new(
             &self.resolved_transaction,
             &data_loader,
@@ -259,12 +258,12 @@ impl<'a> DuplicateDepsVerifier<'a> {
 }
 
 pub struct CapacityVerifier<'a, CS> {
-    chain_store: &'a Arc<CS>,
+    chain_store: &'a CS,
     resolved_transaction: &'a ResolvedTransaction<'a>,
 }
 
-impl<'a, CS: ChainStore> CapacityVerifier<'a, CS> {
-    pub fn new(resolved_transaction: &'a ResolvedTransaction, chain_store: &'a Arc<CS>) -> Self {
+impl<'a, CS: ChainStore<'a>> CapacityVerifier<'a, CS> {
+    pub fn new(resolved_transaction: &'a ResolvedTransaction, chain_store: &'a CS) -> Self {
         CapacityVerifier {
             chain_store,
             resolved_transaction,
@@ -295,7 +294,7 @@ impl<'a, CS: ChainStore> CapacityVerifier<'a, CS> {
     }
 
     fn valid_dao_withdraw_transaction(&self) -> bool {
-        let data_loader = DataLoaderWrapper::new(Arc::clone(&self.chain_store));
+        let data_loader = DataLoaderWrapper::new(self.chain_store);
         self.resolved_transaction
             .resolved_inputs
             .iter()

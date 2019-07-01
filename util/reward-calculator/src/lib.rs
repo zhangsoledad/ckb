@@ -1,5 +1,6 @@
 //! This mod implemented a ckb block reward calculator
 
+use ckb_chain_spec::consensus::Consensus;
 use ckb_core::header::{BlockNumber, Header};
 use ckb_core::script::Script;
 use ckb_core::transaction::ProposalShortId;
@@ -7,12 +8,10 @@ use ckb_core::Capacity;
 use ckb_dao::DaoCalculator;
 use ckb_logger::debug;
 use ckb_store::ChainStore;
-use ckb_traits::ChainProvider;
 use failure::{Error as FailureError, Fail};
 use fnv::FnvHashSet;
 use numext_fixed_hash::H256;
 use std::cmp;
-use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Clone, Eq, Fail)]
 pub enum Error {
@@ -22,20 +21,21 @@ pub enum Error {
     Script(H256),
 }
 
-pub struct RewardCalculator<'a, P> {
-    pub provider: &'a P,
+pub struct RewardCalculator<'a, CS> {
+    pub consensus: &'a Consensus,
+    pub store: &'a CS,
 }
 
-impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
-    pub fn new(provider: &'a P) -> Self {
-        RewardCalculator { provider }
+impl<'a, CS: ChainStore<'a>> RewardCalculator<'a, CS> {
+    pub fn new(consensus: &'a Consensus, store: &'a CS) -> Self {
+        RewardCalculator { consensus, store }
     }
 
     /// `RewardCalculator` is used to calculate block finalize target's reward according to the parent header.
-    /// block reward consists of four parts: base block reward, tx fee, proposal reward, and secondary block reward.
+    /// block reward consists of three parts: base block reward, tx fee, proposal reward.
     pub fn block_reward(&self, parent: &Header) -> Result<(Script, Capacity), FailureError> {
-        let consensus = self.provider.consensus();
-        let store = self.provider.store();
+        let consensus = self.consensus;
+        let store = self.store;
 
         let block_number = parent.number() + 1;
         let target_number = consensus
@@ -43,9 +43,9 @@ impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
             .ok_or_else(|| Error::Target(block_number))?;
 
         let target = self
-            .provider
-            .store()
-            .get_ancestor(parent.hash(), target_number)
+            .store
+            .get_block_hash(target_number)
+            .and_then(|hash| self.store.get_block_header(&hash))
             .ok_or_else(|| Error::Target(block_number))?;
 
         let target_lock = Script::from_witness(
@@ -80,10 +80,9 @@ impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
     /// Miner get (tx_fee - 40% of tx fee) for tx commitment.
     /// Be careful of the rounding, tx_fee - 40% of tx fee is different from 60% of tx fee.
     pub fn txs_fees(&self, target: &Header) -> Result<Capacity, FailureError> {
-        let consensus = self.provider.consensus();
+        let consensus = self.consensus;
         let target_ext = self
-            .provider
-            .store()
+            .store
             .get_block_ext(target.hash())
             .expect("block body stored");
 
@@ -120,10 +119,10 @@ impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
     ) -> Result<Capacity, FailureError> {
         let mut target_proposals = self.get_proposal_ids_by_hash(target.hash());
 
-        let proposal_window = self.provider.consensus().tx_proposal_window();
-        let proposer_ratio = self.provider.consensus().proposer_reward_ratio();
+        let proposal_window = self.consensus.tx_proposal_window();
+        let proposer_ratio = self.consensus.proposer_reward_ratio();
         let block_number = parent.number() + 1;
-        let store = self.provider.store();
+        let store = self.store;
 
         let mut reward = Capacity::zero();
 
@@ -182,8 +181,8 @@ impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
                 cmp::max(index.number().saturating_sub(proposal_window.farthest()), 1);
 
             let previous_ids = store
-                .get_ancestor(parent.hash(), competing_proposal_start)
-                .map(|header| self.get_proposal_ids_by_hash(header.hash()))
+                .get_block_hash(competing_proposal_start)
+                .map(|hash| self.get_proposal_ids_by_hash(&hash))
                 .expect("finalize target exist");
 
             proposed.extend(previous_ids);
@@ -210,8 +209,7 @@ impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
     }
 
     fn base_block_reward(&self, target: &Header) -> Result<Capacity, FailureError> {
-        let consensus = &self.provider.consensus();
-        let calculator = DaoCalculator::new(consensus, Arc::clone(self.provider.store()));
+        let calculator = DaoCalculator::new(&self.consensus, self.store);
         let primary_block_reward = calculator.primary_block_reward(target)?;
         let secondary_block_reward = calculator.secondary_block_reward(target)?;
 
@@ -222,10 +220,10 @@ impl<'a, P: ChainProvider> RewardCalculator<'a, P> {
 
     fn get_proposal_ids_by_hash(&self, hash: &H256) -> FnvHashSet<ProposalShortId> {
         let mut ids_set = FnvHashSet::default();
-        if let Some(ids) = self.provider.store().get_block_proposal_txs_ids(&hash) {
+        if let Some(ids) = self.store.get_block_proposal_txs_ids(&hash) {
             ids_set.extend(ids)
         }
-        if let Some(us) = self.provider.store().get_block_uncles(&hash) {
+        if let Some(us) = self.store.get_block_uncles(&hash) {
             for u in us {
                 ids_set.extend(u.proposals);
             }

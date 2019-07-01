@@ -1,13 +1,14 @@
-use crate::{
-    Col, DBConfig, DbBatch, Direction, Error, IterableKeyValueDB, KeyValueDB, KeyValueIteratorItem,
-    Result,
-};
+use crate::transaction::RocksDBTransaction;
+use crate::{Col, DBConfig, Error, Result};
 use ckb_logger::{info, warn};
-use rocksdb::{
-    ColumnFamily, Direction as RdbDirection, Error as RdbError, IteratorMode, Options, WriteBatch,
-    DB,
+use rocksdb::ops::{
+    Get, GetColumnFamilys, GetPinnedCF, IterateCF, OpenCF, Put, SetOptions, TransactionBegin,
 };
-use std::ops::Range;
+use rocksdb::{
+    ColumnFamily, Error as RdbError, IteratorMode, OptimisticTransactionDB,
+    OptimisticTransactionOptions, Options, WriteOptions,
+};
+pub use rocksdb::{DBPinnableSlice, DBVector};
 use std::sync::Arc;
 
 // If any data format in database was changed, we have to update this constant manually.
@@ -18,7 +19,7 @@ pub(crate) const VERSION_KEY: &str = "db-version";
 pub(crate) const VERSION_VALUE: &str = "0.1501.0";
 
 pub struct RocksDB {
-    inner: Arc<DB>,
+    inner: Arc<OptimisticTransactionDB>,
 }
 
 impl RocksDB {
@@ -35,39 +36,46 @@ impl RocksDB {
         let cfnames: Vec<_> = (0..columns).map(|c| c.to_string()).collect();
         let cf_options: Vec<&str> = cfnames.iter().map(|n| n as &str).collect();
 
-        let db = DB::open_cf(&opts, &config.path, &cf_options).or_else(|err| {
-            let err_str = err.as_ref();
-            if err_str.starts_with("Invalid argument:")
-                && err_str.ends_with("does not exist (create_if_missing is false)")
-            {
-                info!("Initialize a new database");
-                opts.create_if_missing(true);
-                let db = DB::open_cf(&opts, &config.path, &cf_options).map_err(|err| {
-                    Error::DBError(format!("failed to open a new created database: {}", err))
-                })?;
-                db.put(ver_key, ver_val).map_err(|err| {
-                    Error::DBError(format!("failed to initiate the database: {}", err))
-                })?;
-                Ok(db)
-            } else if err.as_ref().starts_with("Corruption:") {
-                warn!("Repairing the rocksdb since {} ...", err);
-                let mut repair_opts = Options::default();
-                repair_opts.create_if_missing(false);
-                repair_opts.create_missing_column_families(false);
-                DB::repair(repair_opts, &config.path).map_err(|err| {
-                    Error::DBError(format!("failed to repair the database: {}", err))
-                })?;
-                warn!("Opening the repaired rocksdb ...");
-                DB::open_cf(&opts, &config.path, &cf_options).map_err(|err| {
-                    Error::DBError(format!("failed to open the repaired database: {}", err))
-                })
-            } else {
-                Err(Error::DBError(format!(
-                    "failed to open the database: {}",
-                    err
-                )))
-            }
-        })?;
+        let db =
+            OptimisticTransactionDB::open_cf(&opts, &config.path, &cf_options).or_else(|err| {
+                let err_str = err.as_ref();
+                if err_str.starts_with("Invalid argument:")
+                    && err_str.ends_with("does not exist (create_if_missing is false)")
+                {
+                    info!("Initialize a new database");
+                    opts.create_if_missing(true);
+                    let db = OptimisticTransactionDB::open_cf(&opts, &config.path, &cf_options)
+                        .map_err(|err| {
+                            Error::DBError(format!(
+                                "failed to open a new created database: {}",
+                                err
+                            ))
+                        })?;
+                    db.put(ver_key, ver_val).map_err(|err| {
+                        Error::DBError(format!("failed to initiate the database: {}", err))
+                    })?;
+                    Ok(db)
+                } else if err.as_ref().starts_with("Corruption:") {
+                    warn!("Repairing the rocksdb since {} ...", err);
+                    let mut repair_opts = Options::default();
+                    repair_opts.create_if_missing(false);
+                    repair_opts.create_missing_column_families(false);
+                    OptimisticTransactionDB::repair(repair_opts, &config.path).map_err(|err| {
+                        Error::DBError(format!("failed to repair the database: {}", err))
+                    })?;
+                    warn!("Opening the repaired rocksdb ...");
+                    OptimisticTransactionDB::open_cf(&opts, &config.path, &cf_options).map_err(
+                        |err| {
+                            Error::DBError(format!("failed to open the repaired database: {}", err))
+                        },
+                    )
+                } else {
+                    Err(Error::DBError(format!(
+                        "failed to open the database: {}",
+                        err
+                    )))
+                }
+            })?;
 
         if let Some(db_opt) = config.options.as_ref() {
             let rocksdb_options: Vec<(&str, &str)> = db_opt
@@ -119,45 +127,13 @@ impl RocksDB {
         Self::open_with_check(config, columns, VERSION_KEY, VERSION_VALUE)
             .unwrap_or_else(|err| panic!("{}", err))
     }
-}
 
-fn cf_handle(db: &DB, col: Col) -> Result<ColumnFamily> {
-    db.cf_handle(&col.to_string())
-        .ok_or_else(|| Error::DBError(format!("column {} not found", col)))
-}
-
-impl KeyValueDB for RocksDB {
-    type Batch = RocksdbBatch;
-
-    fn read(&self, col: Col, key: &[u8]) -> Result<Option<Vec<u8>>> {
+    pub fn get_pinned(&self, col: Col, key: &[u8]) -> Result<Option<DBPinnableSlice>> {
         let cf = cf_handle(&self.inner, col)?;
-        self.inner
-            .get_cf(cf, &key)
-            .map(|v| v.map(|vi| vi.to_vec()))
-            .map_err(Into::into)
+        self.inner.get_pinned_cf(cf, &key).map_err(Into::into)
     }
 
-    fn partial_read(&self, col: Col, key: &[u8], range: &Range<usize>) -> Result<Option<Vec<u8>>> {
-        let cf = cf_handle(&self.inner, col)?;
-        self.inner
-            .get_pinned_cf(cf, &key)
-            .map(|v| v.and_then(|vi| vi.get(range.start..range.end).map(|slice| slice.to_vec())))
-            .map_err(Into::into)
-    }
-
-    fn process_read<F, Ret>(&self, col: Col, key: &[u8], process: F) -> Result<Option<Ret>>
-    where
-        F: FnOnce(&[u8]) -> Result<Option<Ret>>,
-    {
-        let cf = cf_handle(&self.inner, col)?;
-        if let Some(slice) = self.inner.get_pinned_cf(cf, &key)? {
-            process(&slice)
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn traverse<F>(&self, col: Col, mut callback: F) -> Result<()>
+    pub fn traverse<F>(&self, col: Col, mut callback: F) -> Result<()>
     where
         F: FnMut(&[u8], &[u8]) -> Result<()>,
     {
@@ -169,56 +145,22 @@ impl KeyValueDB for RocksDB {
         Ok(())
     }
 
-    fn batch(&self) -> Result<Self::Batch> {
-        Ok(Self::Batch {
-            db: Arc::clone(&self.inner),
-            wb: WriteBatch::default(),
-        })
+    /// Set a snapshot at start of transaction by setting set_snapshot=true
+    pub fn transaction(&self) -> RocksDBTransaction {
+        let write_options = WriteOptions::default();
+        let mut transaction_options = OptimisticTransactionOptions::new();
+        transaction_options.set_snapshot(true);
+
+        RocksDBTransaction {
+            txn: self.inner.transaction(&write_options, &transaction_options),
+            db: &self.inner,
+        }
     }
 }
 
-impl IterableKeyValueDB for RocksDB {
-    fn iter<'a>(
-        &'a self,
-        col: Col,
-        from_key: &'a [u8],
-        direction: Direction,
-    ) -> Result<Box<Iterator<Item = KeyValueIteratorItem> + 'a>> {
-        let cf = cf_handle(&self.inner, col)?;
-        let iter_direction = match direction {
-            Direction::Forward => RdbDirection::Forward,
-            Direction::Reverse => RdbDirection::Reverse,
-        };
-        let mode = IteratorMode::From(from_key, iter_direction);
-        self.inner
-            .iterator_cf(cf, mode)
-            .map(|iter| Box::new(iter) as Box<_>)
-            .map_err(Into::into)
-    }
-}
-
-pub struct RocksdbBatch {
-    db: Arc<DB>,
-    wb: WriteBatch,
-}
-
-impl DbBatch for RocksdbBatch {
-    fn insert(&mut self, col: Col, key: &[u8], value: &[u8]) -> Result<()> {
-        let cf = cf_handle(&self.db, col)?;
-        self.wb.put_cf(cf, key, value)?;
-        Ok(())
-    }
-
-    fn delete(&mut self, col: Col, key: &[u8]) -> Result<()> {
-        let cf = cf_handle(&self.db, col)?;
-        self.wb.delete_cf(cf, &key)?;
-        Ok(())
-    }
-
-    fn commit(self) -> Result<()> {
-        self.db.write(self.wb)?;
-        Ok(())
-    }
+pub(crate) fn cf_handle(db: &OptimisticTransactionDB, col: Col) -> Result<&ColumnFamily> {
+    db.cf_handle(col)
+        .ok_or_else(|| Error::DBError(format!("column {} not found", col)))
 }
 
 impl From<RdbError> for Error {
@@ -229,7 +171,7 @@ impl From<RdbError> for Error {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{DBConfig, Error, Result, RocksDB, VERSION_KEY, VERSION_VALUE};
     use std::collections::HashMap;
     use tempfile;
 
@@ -291,28 +233,32 @@ mod tests {
     fn write_and_read() {
         let db = setup_db("write_and_read", 2);
 
-        let mut batch = db.batch().unwrap();
-        batch.insert(0, &[0, 0], &[0, 0, 0]).unwrap();
-        batch.insert(1, &[1, 1], &[1, 1, 1]).unwrap();
-        batch.insert(1, &[2], &[1, 1, 1]).unwrap();
-        batch.delete(1, &[2]).unwrap();
-        batch.commit().unwrap();
+        let txn = db.transaction();
+        txn.put("0", &[0, 0], &[0, 0, 0]).unwrap();
+        txn.put("1", &[1, 1], &[1, 1, 1]).unwrap();
+        txn.put("1", &[2], &[1, 1, 1]).unwrap();
+        txn.delete("1", &[2]).unwrap();
+        txn.commit().unwrap();
 
-        assert_eq!(Some(vec![0, 0, 0]), db.read(0, &[0, 0]).unwrap());
-        assert_eq!(None, db.read(0, &[1, 1]).unwrap());
+        assert!(
+            vec![0u8, 0, 0].as_slice() == db.get_pinned("0", &[0, 0]).unwrap().unwrap().as_ref()
+        );
+        assert!(db.get_pinned("0", &[1, 1]).unwrap().is_none());
 
-        assert_eq!(None, db.read(1, &[0, 0]).unwrap());
-        assert_eq!(Some(vec![1, 1, 1]), db.read(1, &[1, 1]).unwrap());
+        assert!(db.get_pinned("1", &[0, 0]).unwrap().is_none());
+        assert!(
+            vec![1u8, 1, 1].as_slice() == db.get_pinned("1", &[1, 1]).unwrap().unwrap().as_ref()
+        );
 
-        assert_eq!(None, db.read(1, &[2]).unwrap());
+        assert!(db.get_pinned("1", &[2]).unwrap().is_none());
 
         let mut r = HashMap::new();
         let callback = |k: &[u8], v: &[u8]| -> Result<()> {
             r.insert(k.to_vec(), v.to_vec());
             Ok(())
         };
-        db.traverse(1, callback).unwrap();
-        assert_eq!(r.len(), 1);
+        db.traverse("1", callback).unwrap();
+        assert!(r.len() == 1);
         assert_eq!(r.get(&vec![1, 1]), Some(&vec![1, 1, 1]));
     }
 
@@ -320,25 +266,19 @@ mod tests {
     fn write_and_partial_read() {
         let db = setup_db("write_and_partial_read", 2);
 
-        let mut batch = db.batch().unwrap();
-        batch.insert(0, &[0, 0], &[5, 4, 3, 2]).unwrap();
-        batch.insert(1, &[1, 1], &[1, 2, 3, 4, 5]).unwrap();
-        batch.commit().unwrap();
+        let txn = db.transaction();
+        txn.put("0", &[0, 0], &[5, 4, 3, 2]).unwrap();
+        txn.put("1", &[1, 1], &[1, 2, 3, 4, 5]).unwrap();
+        txn.commit().unwrap();
 
-        assert_eq!(
-            Some(vec![2, 3, 4]),
-            db.partial_read(1, &[1, 1], &(1..4)).unwrap()
-        );
-        assert_eq!(None, db.partial_read(1, &[0, 0], &(1..4)).unwrap());
-        // return None when invalid range is passed
-        assert_eq!(None, db.partial_read(1, &[1, 1], &(2..8)).unwrap());
-        // range must be increasing
-        assert_eq!(None, db.partial_read(1, &[1, 1], &(3..0)).unwrap());
+        let ret = db.get_pinned("1", &[1, 1]).unwrap().unwrap();
 
-        assert_eq!(
-            Some(vec![4, 3, 2]),
-            db.partial_read(0, &[0, 0], &(1..4)).unwrap()
-        );
+        assert!(vec![2u8, 3, 4].as_slice() == &ret.as_ref()[1..4]);
+        assert!(db.get_pinned("1", &[0, 0]).unwrap().is_none());
+
+        let ret = db.get_pinned("0", &[0, 0]).unwrap().unwrap();
+
+        assert!(vec![4u8, 3, 2].as_slice() == &ret.as_ref()[1..4]);
     }
 
     #[test]
@@ -373,50 +313,5 @@ mod tests {
         };
         let _ = RocksDB::open_with_check(&config, 1, VERSION_KEY, VERSION_VALUE).unwrap();
         let _ = RocksDB::open_with_check(&config, 1, VERSION_KEY, VERSION_VALUE).unwrap();
-    }
-
-    #[test]
-    fn iter() {
-        let db = setup_db("iter", 1);
-
-        let mut batch = db.batch().unwrap();
-        batch.insert(0, &[0, 0, 1], &[0, 0, 1]).unwrap();
-        batch.insert(0, &[0, 1, 1], &[0, 1, 1]).unwrap();
-        batch.insert(0, &[0, 1, 2], &[0, 1, 2]).unwrap();
-        batch.insert(0, &[0, 1, 3], &[0, 1, 3]).unwrap();
-        batch.insert(0, &[0, 2, 1], &[0, 2, 1]).unwrap();
-        batch.commit().unwrap();
-
-        let mut iter = db.iter(0, &[0, 1], Direction::Forward).unwrap();
-        assert_eq!(
-            (
-                vec![0, 1, 1].into_boxed_slice(),
-                vec![0, 1, 1].into_boxed_slice()
-            ),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            (
-                vec![0, 1, 2].into_boxed_slice(),
-                vec![0, 1, 2].into_boxed_slice()
-            ),
-            iter.next().unwrap()
-        );
-
-        let mut iter = db.iter(0, &[0, 2], Direction::Reverse).unwrap();
-        assert_eq!(
-            (
-                vec![0, 1, 3].into_boxed_slice(),
-                vec![0, 1, 3].into_boxed_slice()
-            ),
-            iter.next().unwrap()
-        );
-        assert_eq!(
-            (
-                vec![0, 1, 2].into_boxed_slice(),
-                vec![0, 1, 2].into_boxed_slice()
-            ),
-            iter.next().unwrap()
-        );
     }
 }

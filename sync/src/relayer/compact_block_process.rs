@@ -17,17 +17,17 @@ use numext_fixed_hash::H256;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-pub struct CompactBlockProcess<'a, CS> {
+pub struct CompactBlockProcess<'a> {
     message: &'a FbsCompactBlock<'a>,
-    relayer: &'a Relayer<CS>,
+    relayer: &'a Relayer,
     nc: Arc<dyn CKBProtocolContext>,
     peer: PeerIndex,
 }
 
-impl<'a, CS: ChainStore + 'static> CompactBlockProcess<'a, CS> {
+impl<'a> CompactBlockProcess<'a> {
     pub fn new(
         message: &'a FbsCompactBlock,
-        relayer: &'a Relayer<CS>,
+        relayer: &'a Relayer,
         nc: Arc<dyn CKBProtocolContext>,
         peer: PeerIndex,
     ) -> Self {
@@ -130,7 +130,8 @@ impl<'a, CS: ChainStore + 'static> CompactBlockProcess<'a, CS> {
                 };
                 let resolver = HeaderResolverWrapper::new(
                     &compact_block.header,
-                    self.relayer.shared.shared().to_owned(),
+                    self.relayer.shared.shared().store(),
+                    self.relayer.shared.shared().consensus(),
                 );
                 let header_verifier = HeaderVerifier::new(
                     CompactBlockMedianTimeView {
@@ -221,26 +222,20 @@ impl<'a, CS: ChainStore + 'static> CompactBlockProcess<'a, CS> {
     }
 }
 
-struct CompactBlockMedianTimeView<'a, CS> {
+struct CompactBlockMedianTimeView<'a> {
     anchor_hash: &'a H256,
     fn_get_pending_header: Box<Fn(H256) -> Option<Header> + 'a>,
-    shared: &'a Shared<CS>,
+    shared: &'a Shared,
 }
 
-impl<'a, CS> CompactBlockMedianTimeView<'a, CS>
-where
-    CS: ChainStore,
-{
+impl<'a> CompactBlockMedianTimeView<'a> {
     fn get_header(&self, hash: &H256) -> Option<Header> {
         (self.fn_get_pending_header)(hash.to_owned())
             .or_else(|| self.shared.store().get_block_header(hash))
     }
 }
 
-impl<'a, CS> BlockMedianTimeContext for CompactBlockMedianTimeView<'a, CS>
-where
-    CS: ChainStore,
-{
+impl<'a> BlockMedianTimeContext for CompactBlockMedianTimeView<'a> {
     fn median_block_count(&self) -> u64 {
         self.shared.consensus().median_time_block_count() as u64
     }

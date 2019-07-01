@@ -1,8 +1,7 @@
 use ckb_app_config::{ExitCode, StatsArgs};
 use ckb_core::BlockNumber;
-use ckb_db::RocksDB;
 use ckb_shared::shared::{Shared, SharedBuilder};
-use ckb_store::{ChainKVStore, ChainStore};
+use ckb_store::ChainStore;
 use ckb_traits::chain_provider::ChainProvider;
 
 pub fn stats(args: StatsArgs) -> Result<(), ExitCode> {
@@ -12,14 +11,14 @@ pub fn stats(args: StatsArgs) -> Result<(), ExitCode> {
 }
 
 struct Statics {
-    shared: Shared<ChainKVStore<RocksDB>>,
+    shared: Shared,
     from: BlockNumber,
     to: BlockNumber,
 }
 
 impl Statics {
     pub fn build(args: StatsArgs) -> Result<Self, ExitCode> {
-        let shared = SharedBuilder::<RocksDB>::default()
+        let shared = SharedBuilder::default()
             .consensus(args.consensus)
             .db(&args.config.db)
             .build()

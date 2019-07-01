@@ -56,8 +56,8 @@ impl PendingQueue {
     }
 }
 
-impl CellProvider for PendingQueue {
-    fn cell(&self, o: &OutPoint) -> CellStatus {
+impl<'a> CellProvider<'a> for PendingQueue {
+    fn cell(&'a self, o: &OutPoint) -> CellStatus {
         if let Some(cell_out_point) = &o.cell {
             if let Some(x) = self
                 .inner

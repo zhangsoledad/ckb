@@ -4,7 +4,6 @@ use ckb_core::{transaction::Transaction, Cycle};
 use ckb_logger::debug_target;
 use ckb_network::{CKBProtocolContext, PeerIndex, TargetSession};
 use ckb_protocol::{RelayMessage, RelayTransaction as FbsRelayTransaction};
-use ckb_store::ChainStore;
 use failure::Error as FailureError;
 use flatbuffers::FlatBufferBuilder;
 use futures::{self, future::FutureResult, lazy};
@@ -14,17 +13,17 @@ use std::time::Duration;
 
 const DEFAULT_BAN_TIME: Duration = Duration::from_secs(3600 * 24 * 3);
 
-pub struct TransactionProcess<'a, CS> {
+pub struct TransactionProcess<'a> {
     message: &'a FbsRelayTransaction<'a>,
-    relayer: &'a Relayer<CS>,
+    relayer: &'a Relayer,
     nc: Arc<dyn CKBProtocolContext + Sync>,
     peer: PeerIndex,
 }
 
-impl<'a, CS: ChainStore + Sync + 'static> TransactionProcess<'a, CS> {
+impl<'a> TransactionProcess<'a> {
     pub fn new(
         message: &'a FbsRelayTransaction,
-        relayer: &'a Relayer<CS>,
+        relayer: &'a Relayer,
         nc: Arc<CKBProtocolContext + Sync>,
         peer: PeerIndex,
     ) -> Self {

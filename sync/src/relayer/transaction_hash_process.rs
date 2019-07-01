@@ -3,23 +3,22 @@ use ckb_core::transaction::ProposalShortId;
 use ckb_logger::{debug_target, trace_target};
 use ckb_network::{CKBProtocolContext, PeerIndex};
 use ckb_protocol::RelayTransactionHash as FbsRelayTransactionHash;
-use ckb_store::ChainStore;
 use failure::Error as FailureError;
 use numext_fixed_hash::H256;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-pub struct TransactionHashProcess<'a, CS> {
+pub struct TransactionHashProcess<'a> {
     message: &'a FbsRelayTransactionHash<'a>,
-    relayer: &'a Relayer<CS>,
+    relayer: &'a Relayer,
     _nc: Arc<dyn CKBProtocolContext>,
     peer: PeerIndex,
 }
 
-impl<'a, CS: ChainStore + 'static> TransactionHashProcess<'a, CS> {
+impl<'a> TransactionHashProcess<'a> {
     pub fn new(
         message: &'a FbsRelayTransactionHash,
-        relayer: &'a Relayer<CS>,
+        relayer: &'a Relayer,
         nc: Arc<dyn CKBProtocolContext>,
         peer: PeerIndex,
     ) -> Self {

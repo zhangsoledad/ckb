@@ -2,7 +2,6 @@ use crate::helper::{deadlock_detection, wait_for_exit};
 use ckb_app_config::{ExitCode, RunArgs};
 use ckb_build_info::Version;
 use ckb_chain::chain::ChainService;
-use ckb_db::RocksDB;
 use ckb_logger::info_target;
 use ckb_miner::BlockAssembler;
 use ckb_network::{CKBProtocol, NetworkService, NetworkState};
@@ -10,7 +9,6 @@ use ckb_network_alert::alert_relayer::AlertRelayer;
 use ckb_notify::NotifyService;
 use ckb_rpc::{RpcServer, ServiceBuilder};
 use ckb_shared::shared::{Shared, SharedBuilder};
-use ckb_store::ChainStore;
 use ckb_sync::{NetTimeProtocol, NetworkProtocol, Relayer, SyncSharedState, Synchronizer};
 use ckb_traits::chain_provider::ChainProvider;
 use ckb_verification::{BlockVerifier, Verifier};
@@ -19,7 +17,7 @@ use std::sync::Arc;
 pub fn run(args: RunArgs, version: Version) -> Result<(), ExitCode> {
     deadlock_detection();
 
-    let shared = SharedBuilder::<RocksDB>::new()
+    let shared = SharedBuilder::new()
         .consensus(args.consensus)
         .db(&args.config.db)
         .tx_pool_config(args.config.tx_pool)
@@ -129,8 +127,8 @@ pub fn run(args: RunArgs, version: Version) -> Result<(), ExitCode> {
             network_controller.clone(),
             chain_controller.clone(),
         )
-        .enable_alert(alert_verifier, alert_notifier, network_controller)
-        .enable_indexer(&args.config.indexer_db, shared.clone());
+        .enable_alert(alert_verifier, alert_notifier, network_controller);
+    // .enable_indexer(&args.config.indexer_db, shared.clone());
     let io_handler = builder.build();
 
     let rpc_server = RpcServer::new(args.config.rpc, io_handler);
@@ -144,7 +142,7 @@ pub fn run(args: RunArgs, version: Version) -> Result<(), ExitCode> {
     Ok(())
 }
 
-fn verify_genesis<CS: ChainStore + 'static>(shared: &Shared<CS>) -> Result<(), ExitCode> {
+fn verify_genesis(shared: &Shared) -> Result<(), ExitCode> {
     let genesis = shared.consensus().genesis_block();
     BlockVerifier::new(shared.clone())
         .verify(genesis)

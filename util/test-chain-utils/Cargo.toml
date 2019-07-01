@@ -11,3 +11,4 @@ ckb-db = { path = "../../db" }
 ckb-hash = { path = "../hash" }
 ckb-store = { path = "../../store" }
 lazy_static = "1.3.0"
+tempfile = "3.0"

@@ -2,23 +2,22 @@ use crate::relayer::Relayer;
 use ckb_core::transaction::Transaction;
 use ckb_network::{CKBProtocolContext, PeerIndex};
 use ckb_protocol::{cast, BlockTransactions, FlatbuffersVectorIterator};
-use ckb_store::ChainStore;
 use failure::Error as FailureError;
 use std::collections::hash_map::Entry;
 use std::convert::TryInto;
 use std::sync::Arc;
 
-pub struct BlockTransactionsProcess<'a, CS> {
+pub struct BlockTransactionsProcess<'a> {
     message: &'a BlockTransactions<'a>,
-    relayer: &'a Relayer<CS>,
+    relayer: &'a Relayer,
     nc: Arc<dyn CKBProtocolContext>,
     peer: PeerIndex,
 }
 
-impl<'a, CS: ChainStore + 'static> BlockTransactionsProcess<'a, CS> {
+impl<'a> BlockTransactionsProcess<'a> {
     pub fn new(
         message: &'a BlockTransactions,
-        relayer: &'a Relayer<CS>,
+        relayer: &'a Relayer,
         nc: Arc<dyn CKBProtocolContext>,
         peer: PeerIndex,
     ) -> Self {

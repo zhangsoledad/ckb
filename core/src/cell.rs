@@ -275,17 +275,21 @@ pub struct ResolvedTransaction<'a> {
     pub resolved_inputs: Vec<ResolvedOutPoint>,
 }
 
-pub trait CellProvider {
-    fn cell(&self, out_point: &OutPoint) -> CellStatus;
+pub trait CellProvider<'a> {
+    fn cell(&'a self, out_point: &OutPoint) -> CellStatus;
 }
 
-pub struct OverlayCellProvider<'a> {
-    overlay: &'a dyn CellProvider,
-    cell_provider: &'a dyn CellProvider,
+pub struct OverlayCellProvider<'a, A, B> {
+    overlay: &'a A,
+    cell_provider: &'a B,
 }
 
-impl<'a> OverlayCellProvider<'a> {
-    pub fn new(overlay: &'a dyn CellProvider, cell_provider: &'a dyn CellProvider) -> Self {
+impl<'a, A, B> OverlayCellProvider<'a, A, B>
+where
+    A: CellProvider<'a>,
+    B: CellProvider<'a>,
+{
+    pub fn new(overlay: &'a A, cell_provider: &'a B) -> Self {
         Self {
             overlay,
             cell_provider,
@@ -293,8 +297,12 @@ impl<'a> OverlayCellProvider<'a> {
     }
 }
 
-impl<'a> CellProvider for OverlayCellProvider<'a> {
-    fn cell(&self, out_point: &OutPoint) -> CellStatus {
+impl<'a, A, B> CellProvider<'a> for OverlayCellProvider<'a, A, B>
+where
+    A: CellProvider<'a>,
+    B: CellProvider<'a>,
+{
+    fn cell(&'a self, out_point: &OutPoint) -> CellStatus {
         match self.overlay.cell(out_point) {
             CellStatus::Live(cell_meta) => CellStatus::Live(cell_meta),
             CellStatus::Dead => CellStatus::Dead,
@@ -352,8 +360,8 @@ impl<'a> BlockCellProvider<'a> {
     }
 }
 
-impl<'a> CellProvider for BlockCellProvider<'a> {
-    fn cell(&self, out_point: &OutPoint) -> CellStatus {
+impl<'a> CellProvider<'a> for BlockCellProvider<'a> {
+    fn cell(&'a self, out_point: &OutPoint) -> CellStatus {
         if out_point.cell.is_none() {
             return CellStatus::Unspecified;
         }
@@ -397,8 +405,8 @@ impl TransactionsProvider {
     }
 }
 
-impl CellProvider for TransactionsProvider {
-    fn cell(&self, out_point: &OutPoint) -> CellStatus {
+impl<'a> CellProvider<'a> for TransactionsProvider {
+    fn cell(&'a self, out_point: &OutPoint) -> CellStatus {
         if let Some(cell_out_point) = &out_point.cell {
             match self.transactions.get(&cell_out_point.tx_hash) {
                 Some(tx) => tx
@@ -419,96 +427,8 @@ impl CellProvider for TransactionsProvider {
     }
 }
 
-pub trait HeaderProvider {
-    fn header(&self, out_point: &OutPoint) -> HeaderStatus;
-}
-
-pub struct OverlayHeaderProvider<'a, O, HP> {
-    overlay: &'a O,
-    header_provider: &'a HP,
-}
-
-impl<'a, O, HP> OverlayHeaderProvider<'a, O, HP> {
-    pub fn new(overlay: &'a O, header_provider: &'a HP) -> Self {
-        OverlayHeaderProvider {
-            overlay,
-            header_provider,
-        }
-    }
-}
-
-impl<'a, O, HP> HeaderProvider for OverlayHeaderProvider<'a, O, HP>
-where
-    O: HeaderProvider,
-    HP: HeaderProvider,
-{
-    fn header(&self, out_point: &OutPoint) -> HeaderStatus {
-        match self.overlay.header(out_point) {
-            HeaderStatus::Live(h) => HeaderStatus::Live(h),
-            HeaderStatus::InclusionFaliure => HeaderStatus::InclusionFaliure,
-            HeaderStatus::Unknown => self.header_provider.header(out_point),
-            HeaderStatus::Unspecified => HeaderStatus::Unspecified,
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct BlockHeadersProvider {
-    attached_indices: FnvHashMap<H256, Header>,
-    attached_transaction_blocks: FnvHashMap<H256, H256>,
-    detached_indices: FnvHashMap<H256, Header>,
-}
-
-impl BlockHeadersProvider {
-    pub fn push_attached(&mut self, block: &Block) {
-        self.attached_indices
-            .insert(block.header().hash().clone(), block.header().clone());
-        for tx in block.transactions() {
-            self.attached_transaction_blocks
-                .insert(tx.hash().clone(), block.header().hash().clone());
-        }
-    }
-
-    pub fn push_detached(&mut self, block: &Block) {
-        self.detached_indices
-            .insert(block.header().hash().clone(), block.header().clone());
-    }
-
-    #[cfg(test)]
-    pub fn insert_attached_transaction_block(&mut self, tx_hash: H256, header_hash: H256) {
-        self.attached_transaction_blocks
-            .insert(tx_hash, header_hash);
-    }
-}
-
-impl HeaderProvider for BlockHeadersProvider {
-    fn header(&self, out_point: &OutPoint) -> HeaderStatus {
-        if let Some(block_hash) = &out_point.block_hash {
-            if self.detached_indices.contains_key(&block_hash) {
-                return HeaderStatus::Unknown;
-            }
-            match self.attached_indices.get(&block_hash) {
-                Some(header) => {
-                    if let Some(cell_out_point) = &out_point.cell {
-                        self.attached_transaction_blocks
-                            .get(&cell_out_point.tx_hash)
-                            .map_or(HeaderStatus::InclusionFaliure, |tx_block_hash| {
-                                if *tx_block_hash == *block_hash {
-                                    HeaderStatus::live_header((*header).clone())
-                                } else {
-                                    HeaderStatus::InclusionFaliure
-                                }
-                            })
-                    } else {
-                        HeaderStatus::live_header((*header).clone())
-                    }
-                }
-                None => HeaderStatus::Unknown,
-            }
-        } else {
-            HeaderStatus::Unspecified
-        }
-    }
+pub trait HeaderProvider<'a> {
+    fn header(&'a self, out_point: &OutPoint) -> HeaderStatus;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -528,11 +448,11 @@ pub enum UnresolvableError {
     OutOfOrder(OutPoint),
 }
 
-pub fn resolve_transaction<'a, CP: CellProvider, HP: HeaderProvider>(
+pub fn resolve_transaction<'a, 'b, 'c, CP: CellProvider<'b>, HP: HeaderProvider<'c>>(
     transaction: &'a Transaction,
     seen_inputs: &mut FnvHashSet<OutPoint>,
-    cell_provider: &CP,
-    header_provider: &HP,
+    cell_provider: &'b CP,
+    header_provider: &'c HP,
 ) -> Result<ResolvedTransaction<'a>, UnresolvableError> {
     let (mut unknown_out_points, mut resolved_inputs, mut resolved_deps) = (
         Vec::new(),

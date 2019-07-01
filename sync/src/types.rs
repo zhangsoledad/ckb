@@ -17,6 +17,7 @@ use ckb_network::{CKBProtocolContext, PeerIndex};
 use ckb_protocol::SyncMessage;
 use ckb_shared::chain_state::ChainState;
 use ckb_shared::shared::Shared;
+use ckb_store::ChainDB;
 use ckb_store::ChainStore;
 use ckb_traits::ChainProvider;
 use ckb_util::{Mutex, MutexGuard};
@@ -628,8 +629,8 @@ bitflags! {
     }
 }
 
-pub struct SyncSharedState<CS> {
-    shared: Shared<CS>,
+pub struct SyncSharedState {
+    shared: Shared,
 
     n_sync_started: AtomicUsize,
     n_protected_outbound_peers: AtomicUsize,
@@ -660,8 +661,8 @@ pub struct SyncSharedState<CS> {
     inflight_blocks: RwLock<InflightBlocks>,
 }
 
-impl<CS: ChainStore> SyncSharedState<CS> {
-    pub fn new(shared: Shared<CS>) -> SyncSharedState<CS> {
+impl SyncSharedState {
+    pub fn new(shared: Shared) -> SyncSharedState {
         let (total_difficulty, header, total_uncles_count) = {
             let chain_state = shared.lock_chain_state();
             let block_ext = shared
@@ -704,7 +705,7 @@ impl<CS: ChainStore> SyncSharedState<CS> {
         }
     }
 
-    pub fn shared(&self) -> &Shared<CS> {
+    pub fn shared(&self) -> &Shared {
         &self.shared
     }
     pub fn n_sync_started(&self) -> &AtomicUsize {
@@ -745,10 +746,10 @@ impl<CS: ChainStore> SyncSharedState<CS> {
     pub fn write_inflight_blocks(&self) -> RwLockWriteGuard<InflightBlocks> {
         self.inflight_blocks.write()
     }
-    pub fn store(&self) -> &Arc<CS> {
+    pub fn store(&self) -> &ChainDB {
         self.shared.store()
     }
-    pub fn lock_chain_state(&self) -> MutexGuard<ChainState<CS>> {
+    pub fn lock_chain_state(&self) -> MutexGuard<ChainState> {
         self.shared.lock_chain_state()
     }
     pub fn lock_txs_verify_cache(&self) -> MutexGuard<LruCache<H256, Cycle>> {
