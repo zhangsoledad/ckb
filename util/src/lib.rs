@@ -22,6 +22,16 @@ pub fn lock_or_panic<T>(data: &Mutex<T>) -> MutexGuard<T> {
         .expect("please check if reach a deadlock")
 }
 
+pub fn try_read_for<T>(data: &RwLock<T>) -> RwLockReadGuard<T> {
+    data.try_read_for(TRY_LOCK_TIMEOUT)
+        .expect("please check if reach a deadlock")
+}
+
+pub fn try_write_for<T>(data: &RwLock<T>) -> RwLockWriteGuard<T> {
+    data.try_write_for(TRY_LOCK_TIMEOUT)
+        .expect("please check if reach a deadlock")
+}
+
 /// Helper macro for reducing boilerplate code for matching `Option` together
 /// with early return.
 ///

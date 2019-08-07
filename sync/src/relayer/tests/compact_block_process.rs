@@ -113,8 +113,8 @@ fn test_unknow_parent() {
     let r = compact_block_process.execute();
     assert_eq!(r.ok(), Some(Status::UnknownParent));
 
-    let chain_state = relayer.shared.lock_chain_state();
-    let header = chain_state.tip_header();
+    let snapshot = relayer.shared.snapshot();
+    let header = snapshot.tip_header();
     let locator_hash = relayer.shared.get_locator(header);
 
     let content = packed::GetHeaders::new_builder()
@@ -135,8 +135,8 @@ fn test_unknow_parent() {
 fn test_accept_not_a_better_block() {
     let (relayer, _) = build_chain(5);
     let header = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     // The timestamp is random, so it may be not a better block.
@@ -173,8 +173,8 @@ fn test_accept_not_a_better_block() {
 fn test_already_in_flight() {
     let (relayer, _) = build_chain(5);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     // Better block
@@ -217,8 +217,8 @@ fn test_already_in_flight() {
 fn test_already_pending() {
     let (relayer, _) = build_chain(5);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     // Better block
@@ -267,8 +267,8 @@ fn test_already_pending() {
 fn test_header_invalid() {
     let (relayer, _) = build_chain(5);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     // Better block but block number is invalid
@@ -312,8 +312,8 @@ fn test_header_invalid() {
 fn test_inflight_blocks_reach_limit() {
     let (relayer, _) = build_chain(5);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     let header = new_header_builder(relayer.shared.shared(), &parent).build();
@@ -369,8 +369,8 @@ fn test_inflight_blocks_reach_limit() {
 fn test_send_missing_indexes() {
     let (relayer, _) = build_chain(5);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     let header = new_header_builder(relayer.shared.shared(), &parent).build();
@@ -450,8 +450,8 @@ fn test_send_missing_indexes() {
 fn test_accept_block() {
     let (relayer, _) = build_chain(5);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
 
     let header = new_header_builder(relayer.shared.shared(), &parent).build();
@@ -485,8 +485,8 @@ fn test_accept_block() {
 fn test_ignore_a_too_old_block() {
     let (relayer, _) = build_chain(1804);
     let parent = {
-        let chain_state = relayer.shared.lock_chain_state();
-        chain_state.tip_header().clone()
+        let snapshot = relayer.shared.snapshot();
+        snapshot.tip_header().clone()
     };
     let parent = relayer.shared.get_ancestor(&parent.hash(), 2).unwrap();
 

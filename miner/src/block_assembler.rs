@@ -9,7 +9,8 @@ use ckb_jsonrpc_types::{
 };
 use ckb_logger::{error, info};
 use ckb_notify::NotifyController;
-use ckb_shared::{shared::Shared, tx_pool::ProposedEntry};
+use ckb_reward_calculator::RewardCalculator;
+use ckb_shared::{shared::Shared, tx_pool::ProposedEntry, Snapshot};
 use ckb_stop_handler::{SignalSender, StopHandler};
 use ckb_store::ChainStore;
 use ckb_traits::ChainProvider;
@@ -21,9 +22,7 @@ use ckb_types::{
         BlockNumber, Capacity, Cycle, EpochExt, HeaderView, ScriptHashType, TransactionBuilder,
         TransactionView, Version,
     },
-    packed::{
-        self, CellInput, CellOutput, OutPoint, ProposalShortId, Script, Transaction, UncleBlock,
-    },
+    packed::{self, CellInput, CellOutput, ProposalShortId, Script, Transaction, UncleBlock},
     prelude::*,
     H256,
 };
@@ -34,6 +33,7 @@ use faketime::unix_time_as_millis;
 use lru_cache::LruCache;
 use std::cmp;
 use std::collections::HashSet;
+use std::iter;
 use std::sync::{atomic::AtomicU64, atomic::AtomicUsize, atomic::Ordering, Arc};
 use std::thread;
 
@@ -286,9 +286,10 @@ impl BlockAssembler {
         let last_uncles_updated_at = self.last_uncles_updated_at.load(Ordering::SeqCst);
 
         // try get cache
-        // this attempt will not touch chain_state lock which mean it should be fast
-        let store = self.shared.store();
-        let tip_header = store.get_tip_header().to_owned().expect("get tip header");
+        let snapshot: &Snapshot = &self.shared.snapshot();
+        let tip_header = snapshot.get_tip_header().expect("get tip header");
+        let tip_hash = tip_header.hash();
+        let candidate_number = tip_header.number() + 1;
         let current_time = cmp::max(unix_time_as_millis(), tip_header.timestamp() + 1);
         if let Some(template_cache) = self.template_caches.get(&(
             tip_header.hash().unpack(),
@@ -302,22 +303,8 @@ impl BlockAssembler {
                 template.current_time = JsonTimestamp(current_time);
                 return Ok(template);
             }
-        }
+            let last_txs_updated_at = self.shared.try_lock_tx_pool().get_last_txs_updated_at();
 
-        // lock chain_store to make sure data consistency
-        let chain_state = self.shared.lock_chain_state();
-        // refetch tip header, tip may changed after we get the lock
-        let tip_header = chain_state.tip_header().to_owned();
-        let tip_hash = tip_header.hash();
-        let candidate_number = tip_header.number() + 1;
-        // check cache again, return cache if we have no modify
-        if let Some(template_cache) =
-            self.template_caches
-                .get(&(tip_hash.unpack(), cycles_limit, bytes_limit, version))
-        {
-            let last_txs_updated_at = chain_state.get_last_txs_updated_at();
-            // check our tx_pool wether is modified
-            // we can reuse cache if it is not modidied
             if !template_cache.is_modified(last_uncles_updated_at, last_txs_updated_at) {
                 let mut template = template_cache.template.clone();
                 template.current_time = JsonTimestamp(current_time);
@@ -325,10 +312,16 @@ impl BlockAssembler {
             }
         }
 
-        let last_epoch = store.get_current_epoch_ext().expect("current epoch ext");
-        let next_epoch_ext = self.shared.next_epoch_ext(&last_epoch, &tip_header);
+        let last_epoch = snapshot.get_current_epoch_ext().expect("current epoch ext");
+        let next_epoch_ext =
+            snapshot.next_epoch_ext(self.shared.consensus(), &last_epoch, &tip_header);
         let current_epoch = next_epoch_ext.unwrap_or(last_epoch);
-        let uncles = self.prepare_uncles(candidate_number, &current_epoch, candidate_uncles);
+        let uncles = self.prepare_uncles(
+            &snapshot,
+            candidate_number,
+            &current_epoch,
+            candidate_uncles,
+        );
 
         let cellbase_lock_args = self
             .config
@@ -345,43 +338,38 @@ impl BlockAssembler {
             .hash_type(hash_type.pack())
             .build();
 
-        let cellbase = self.build_cellbase(&tip_header, cellbase_lock)?;
+        let cellbase = self.build_cellbase(&snapshot, &tip_header, cellbase_lock)?;
 
-        let last_txs_updated_at = chain_state.get_last_txs_updated_at();
-        let proposals = chain_state.get_proposals(proposals_limit as usize);
-        let txs_size_limit =
-            self.calculate_txs_size_limit(bytes_limit, cellbase.data(), &uncles, &proposals)?;
+        let (proposals, entries, last_txs_updated_at) = {
+            let tx_pool = self.shared.try_lock_tx_pool();
+            let last_txs_updated_at = tx_pool.get_last_txs_updated_at();
+            let proposals = tx_pool.get_proposals(proposals_limit as usize);
+            let txs_size_limit =
+                self.calculate_txs_size_limit(bytes_limit, cellbase.data(), &uncles, &proposals)?;
 
-        let (entries, size, cycles) = chain_state.get_proposed_txs(txs_size_limit, cycles_limit);
-        if !entries.is_empty() {
-            info!(
-                "[get_block_template] candidate txs count: {}, size: {}/{}, cycles:{}/{}",
-                entries.len(),
-                size,
-                txs_size_limit,
-                cycles,
-                cycles_limit
-            );
-        }
+            let (entries, size, cycles) = tx_pool.get_proposed_txs(txs_size_limit, cycles_limit);
+            if !entries.is_empty() {
+                info!(
+                    "[get_block_template] candidate txs count: {}, size: {}/{}, cycles:{}/{}",
+                    entries.len(),
+                    size,
+                    txs_size_limit,
+                    cycles,
+                    cycles_limit
+                );
+            }
+            (proposals, entries, last_txs_updated_at)
+        };
 
-        // Generate DAO fields here
-        let mut txs = vec![cellbase.clone()];
-        for entry in &entries {
-            txs.push(entry.transaction.clone());
-        }
-        let mut seen_inputs: HashSet<OutPoint> = HashSet::default();
-        let transactions_provider = TransactionsProvider::new(&txs);
-        let overlay_cell_provider = OverlayCellProvider::new(&transactions_provider, &*chain_state);
+        let mut txs = iter::once(&cellbase).chain(entries.iter().map(|entry| &entry.transaction));
+
+        let mut seen_inputs = HashSet::new();
+        let transactions_provider = TransactionsProvider::new(txs.clone());
+        let overlay_cell_provider = OverlayCellProvider::new(&transactions_provider, snapshot);
 
         let rtxs = txs
-            .iter()
             .try_fold(vec![], |mut rtxs, tx| {
-                match resolve_transaction(
-                    &tx,
-                    &mut seen_inputs,
-                    &overlay_cell_provider,
-                    &*chain_state,
-                ) {
+                match resolve_transaction(tx, &mut seen_inputs, &overlay_cell_provider, snapshot) {
                     Ok(rtx) => {
                         rtxs.push(rtx);
                         Ok(rtxs)
@@ -390,11 +378,9 @@ impl BlockAssembler {
                 }
             })
             .map_err(|_| Error::InvalidInput)?;
-        let dao = DaoCalculator::new(&chain_state.consensus(), chain_state.store())
-            .dao_field(&rtxs, &tip_header)?;
-
-        // Release the lock as soon as possible, let other services do their work
-        drop(chain_state);
+        // Generate DAO fields here
+        let dao =
+            DaoCalculator::new(self.shared.consensus(), snapshot).dao_field(&rtxs, &tip_header)?;
 
         // Should recalculate current time after create cellbase (create cellbase may spend a lot of time)
         let current_time = cmp::max(unix_time_as_millis(), tip_header.timestamp() + 1);
@@ -438,13 +424,15 @@ impl BlockAssembler {
     /// miner should collect the block reward for finalize target H(max(0, c - w_far - 1))
     fn build_cellbase(
         &self,
+        snapshot: &Snapshot,
         tip: &HeaderView,
         lock: Script,
     ) -> Result<TransactionView, FailureError> {
         let candidate_number = tip.number() + 1;
 
         let tx = {
-            let (target_lock, block_reward) = self.shared.finalize_block_reward(tip)?;
+            let (target_lock, block_reward) =
+                RewardCalculator::new(self.shared.consensus(), snapshot).block_reward(tip)?;
             let witness = lock.into_witness();
             let input = CellInput::new_cellbase_input(candidate_number);
             let raw_output = CellOutput::new_builder()
@@ -503,11 +491,11 @@ impl BlockAssembler {
     // and (4) B2 is the first block in its chain to refer to B1.
     fn prepare_uncles(
         &self,
+        snapshot: &Snapshot,
         candidate_number: BlockNumber,
         current_epoch_ext: &EpochExt,
         candidate_uncles: &mut CandidateUncles,
     ) -> Vec<UncleBlock> {
-        let store = self.shared.store();
         let epoch_number = current_epoch_ext.number();
         let max_uncles_num = self.shared.consensus().max_uncles_num();
         let mut uncles: Vec<UncleBlock> = Vec::with_capacity(max_uncles_num);
@@ -521,13 +509,13 @@ impl BlockAssembler {
             let parent_hash = uncle.data().header().raw().parent_hash();
             if &uncle.difficulty() != current_epoch_ext.difficulty()
                 || uncle.epoch() != epoch_number
-                || store.get_block_number(&uncle.hash()).is_some()
-                || store.is_uncle(&uncle.hash())
+                || snapshot.get_block_number(&uncle.hash()).is_some()
+                || snapshot.is_uncle(&uncle.hash())
                 || !(uncles
                     .iter()
                     .any(|u| u.calc_header_hash().pack() == parent_hash)
-                    || store.get_block_number(&parent_hash).is_some()
-                    || store.is_uncle(&parent_hash))
+                    || snapshot.get_block_number(&parent_hash).is_some()
+                    || snapshot.is_uncle(&parent_hash))
                 || uncle.number() >= candidate_number
             {
                 removed.push(Arc::new(uncle.data()));
@@ -577,10 +565,10 @@ mod tests {
         if let Some(consensus) = consensus {
             builder = builder.consensus(consensus);
         }
-        let shared = builder.build().unwrap();
+        let (shared, table) = builder.build().unwrap();
 
         let notify = notify.unwrap_or_else(|| NotifyService::default().start::<&str>(None));
-        let chain_service = ChainService::new(shared.clone(), notify.clone());
+        let chain_service = ChainService::new(shared.clone(), table, notify.clone());
         let chain_controller = chain_service.start::<&str>(None);
         (chain_controller, shared, notify)
     }
@@ -611,13 +599,13 @@ mod tests {
 
         let resolver = HeaderResolverWrapper::new(&header, shared.store(), shared.consensus());
         let header_verify_result = {
-            let chain_state = shared.lock_chain_state();
-            let header_verifier = HeaderVerifier::new(&*chain_state, Pow::Dummy.engine());
+            let snapshot: &Snapshot = &shared.snapshot();
+            let header_verifier = HeaderVerifier::new(snapshot, Pow::Dummy.engine());
             header_verifier.verify(&resolver)
         };
         assert!(header_verify_result.is_ok());
 
-        let block_verify = BlockVerifier::new(shared.clone());
+        let block_verify = BlockVerifier::new(shared.consensus());
         assert!(block_verify.verify(&block).is_ok());
     }
 
