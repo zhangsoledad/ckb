@@ -21,7 +21,10 @@ use ckb_network_alert::{
     alert_relayer::AlertRelayer, config::SignatureConfig as AlertSignatureConfig,
 };
 use ckb_notify::NotifyService;
-use ckb_shared::shared::{Shared, SharedBuilder};
+use ckb_shared::{
+    shared::{Shared, SharedBuilder},
+    Snapshot,
+};
 use ckb_sync::{SyncSharedState, Synchronizer};
 use ckb_test_chain_utils::{always_success_cell, always_success_cellbase};
 use ckb_traits::chain_provider::ChainProvider;
@@ -36,6 +39,7 @@ use reqwest;
 use serde_derive::{Deserialize, Serialize};
 use serde_json::{from_reader, json, to_string, to_string_pretty, Map, Value};
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs::File;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -116,14 +120,9 @@ fn next_block(shared: &Shared, parent: &Header) -> Block {
     }
 
     let dao = {
-        let chain_state = shared.lock_chain_state();
-        let resolved_cellbase = resolve_transaction(
-            &cellbase,
-            &mut Default::default(),
-            &*chain_state,
-            &*chain_state,
-        )
-        .unwrap();
+        let snapshot: &Snapshot = &shared.snapshot();
+        let resolved_cellbase =
+            resolve_transaction(&cellbase, &mut HashSet::new(), snapshot, snapshot).unwrap();
         DaoCalculator::new(shared.consensus(), shared.store())
             .dao_field(&[resolved_cellbase], parent)
             .unwrap()
@@ -144,13 +143,13 @@ fn next_block(shared: &Shared, parent: &Header) -> Block {
 
 // Setup the running environment
 fn setup_node(height: u64) -> (Shared, ChainController, RpcServer) {
-    let shared = SharedBuilder::default()
+    let (shared, table) = SharedBuilder::default()
         .consensus(always_success_consensus())
         .build()
         .unwrap();
     let chain_controller = {
         let notify = NotifyService::default().start::<&str>(None);
-        ChainService::new(shared.clone(), notify).start::<&str>(None)
+        ChainService::new(shared.clone(), table, notify).start::<&str>(None)
     };
 
     // Build chain, insert [1, height) blocks
@@ -328,8 +327,8 @@ fn result_of(client: &reqwest::Client, uri: &str, method: &str, params: Value) -
 // Get the expected params of the given case
 fn params_of(shared: &Shared, method: &str) -> Value {
     let tip = {
-        let chain = shared.lock_chain_state();
-        chain.tip_header().to_owned()
+        let snapshot = shared.snapshot();
+        snapshot.tip_header().to_owned()
     };
     let tip_number = json!(tip.number().to_string());
     let tip_hash = json!(format!("{:#x}", tip.hash()));

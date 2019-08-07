@@ -8,9 +8,10 @@ edition = "2018"
 [dependencies]
 ckb-chain = { path = "../chain" }
 ckb-shared = { path = "../shared" }
+ckb-tx-pool-executor = { path = "../shared/tx-pool-executor" }
 ckb-store = { path = "../store" }
 ckb-core = { path = "../core" }
-ckb-tx-pool-executor = { path = "../shared/tx-pool-executor" }
+# ckb-tx-pool-executor = { path = "../shared/tx-pool-executor" }
 numext-fixed-hash = { version = "0.1", features = ["support_rand", "support_heapsize", "support_serde"] }
 numext-fixed-uint = { version = "0.1", features = ["support_rand", "support_heapsize", "support_serde"] }
 ckb-network = { path = "../network" }
@@ -29,6 +30,7 @@ bytes = "0.4.12"
 lru-cache = { git = "https://github.com/nervosnetwork/lru-cache", rev = "a35fdb8" }
 sentry = "^0.15.4"
 futures = "0.1"
+arc-swap = "0.4"
 
 [dev-dependencies]
 ckb-notify = { path = "../notify" }

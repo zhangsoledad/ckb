@@ -5,7 +5,7 @@ use ckb_core::Cycle;
 use ckb_util::{LinkedFnvHashMap, LinkedFnvHashMapEntries};
 
 #[derive(Default, Debug, Clone)]
-pub(crate) struct PendingQueue {
+pub struct PendingQueue {
     pub(crate) inner: LinkedFnvHashMap<ProposalShortId, PendingEntry>,
 }
 

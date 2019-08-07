@@ -3,10 +3,9 @@ use crate::extras::TransactionInfo;
 use crate::transaction::{CellOutput, OutPoint, Transaction, OUT_POINT_LEN};
 use crate::{Bytes, Capacity};
 use ckb_occupied_capacity::Result as CapacityResult;
-use fnv::{FnvHashMap, FnvHashSet};
 use numext_fixed_hash::H256;
 use serde_derive::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt;
 
@@ -201,7 +200,7 @@ where
 }
 
 pub struct BlockCellProvider<'a> {
-    output_indices: FnvHashMap<&'a H256, usize>,
+    output_indices: HashMap<&'a H256, usize>,
     block: &'a Block,
 }
 
@@ -209,7 +208,7 @@ pub struct BlockCellProvider<'a> {
 // Transactions have to appear after any transactions upon which they depend
 impl<'a> BlockCellProvider<'a> {
     pub fn new(block: &'a Block) -> Result<Self, UnresolvableError> {
-        let output_indices: FnvHashMap<&'a H256, usize> = block
+        let output_indices: HashMap<&'a H256, usize> = block
             .transactions()
             .iter()
             .enumerate()
@@ -273,21 +272,18 @@ impl<'a> CellProvider for BlockCellProvider<'a> {
     }
 }
 
-pub struct TransactionsProvider {
-    transactions: FnvHashMap<H256, Transaction>,
+pub struct TransactionsProvider<'a> {
+    transactions: HashMap<H256, &'a Transaction>,
 }
 
-impl TransactionsProvider {
-    pub fn new(transactions: &[Transaction]) -> Self {
-        let transactions = transactions
-            .iter()
-            .map(|tx| (tx.hash().to_owned(), tx.to_owned()))
-            .collect();
+impl<'a> TransactionsProvider<'a> {
+    pub fn new(transactions: impl Iterator<Item = &'a Transaction>) -> Self {
+        let transactions = transactions.map(|tx| (tx.hash().to_owned(), tx)).collect();
         Self { transactions }
     }
 }
 
-impl CellProvider for TransactionsProvider {
+impl<'a> CellProvider for TransactionsProvider<'a> {
     fn cell(&self, out_point: &OutPoint, _with_data: bool) -> CellStatus {
         match self.transactions.get(&out_point.tx_hash) {
             Some(tx) => tx
@@ -313,28 +309,6 @@ impl CellProvider for TransactionsProvider {
 pub trait HeaderChecker {
     /// Check if header in main chain
     fn is_valid(&self, block_hash: &H256) -> bool;
-}
-
-#[derive(Default)]
-pub struct BlockHeadersChecker {
-    attached_indices: HashSet<H256>,
-    detached_indices: HashSet<H256>,
-}
-
-impl BlockHeadersChecker {
-    pub fn push_attached(&mut self, block_hash: H256) {
-        self.attached_indices.insert(block_hash);
-    }
-
-    pub fn push_detached(&mut self, block_hash: H256) {
-        self.detached_indices.insert(block_hash);
-    }
-}
-
-impl HeaderChecker for BlockHeadersChecker {
-    fn is_valid(&self, block_hash: &H256) -> bool {
-        !self.detached_indices.contains(block_hash) && self.attached_indices.contains(block_hash)
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -407,9 +381,14 @@ fn resolve_dep_group<
     Ok(resolved_deps)
 }
 
-pub fn resolve_transaction<'a, CP: CellProvider, HC: HeaderChecker>(
+pub fn resolve_transaction<
+    'a,
+    CP: CellProvider,
+    HC: HeaderChecker,
+    S: ::std::hash::BuildHasher + Default,
+>(
     transaction: &'a Transaction,
-    seen_inputs: &mut FnvHashSet<OutPoint>,
+    seen_inputs: &mut HashSet<OutPoint, S>,
     cell_provider: &CP,
     header_checker: &HC,
 ) -> Result<ResolvedTransaction<'a>, UnresolvableError> {
@@ -418,7 +397,7 @@ pub fn resolve_transaction<'a, CP: CellProvider, HC: HeaderChecker>(
         Vec::with_capacity(transaction.inputs().len()),
         Vec::with_capacity(transaction.cell_deps().len()),
     );
-    let mut current_inputs = FnvHashSet::default();
+    let mut current_inputs = HashSet::new();
 
     let mut resolve_cell = |out_point: &OutPoint,
                             with_data: bool|
@@ -502,7 +481,25 @@ mod tests {
     use super::*;
     use crate::{capacity_bytes, Bytes, Capacity};
     use numext_fixed_hash::{h256, H256};
-    use std::collections::HashMap;
+
+    #[derive(Default)]
+    pub struct BlockHeadersChecker {
+        attached_indices: HashSet<H256>,
+        detached_indices: HashSet<H256>,
+    }
+
+    impl BlockHeadersChecker {
+        pub fn push_attached(&mut self, block_hash: H256) {
+            self.attached_indices.insert(block_hash);
+        }
+    }
+
+    impl HeaderChecker for BlockHeadersChecker {
+        fn is_valid(&self, block_hash: &H256) -> bool {
+            !self.detached_indices.contains(block_hash)
+                && self.attached_indices.contains(block_hash)
+        }
+    }
 
     #[derive(Default)]
     struct CellMemoryDb {
@@ -611,7 +608,7 @@ mod tests {
         let dep = CellDep::new_group(op_dep);
 
         let transaction = TransactionBuilder::default().cell_dep(dep).build();
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let result = resolve_transaction(
             &transaction,
             &mut seen_inputs,
@@ -641,7 +638,7 @@ mod tests {
         let dep = CellDep::new_group(op_dep.clone());
 
         let transaction = TransactionBuilder::default().cell_dep(dep).build();
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let result = resolve_transaction(
             &transaction,
             &mut seen_inputs,
@@ -670,7 +667,7 @@ mod tests {
         let dep = CellDep::new_group(op_dep.clone());
 
         let transaction = TransactionBuilder::default().cell_dep(dep).build();
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let result = resolve_transaction(
             &transaction,
             &mut seen_inputs,
@@ -699,7 +696,7 @@ mod tests {
             .header_dep(block_hash2)
             .build();
 
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let result = resolve_transaction(
             &transaction,
             &mut seen_inputs,
@@ -725,7 +722,7 @@ mod tests {
             .header_dep(invalid_block_hash.clone())
             .build();
 
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let result = resolve_transaction(
             &transaction,
             &mut seen_inputs,
@@ -827,7 +824,7 @@ mod tests {
             .cell_dep(CellDep::new_cell(out_point.clone()))
             .build();
 
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let rtx =
             resolve_transaction(&tx, &mut seen_inputs, &cell_provider, &header_checker).unwrap();
 
@@ -856,7 +853,7 @@ mod tests {
                 .input(CellInput::new(out_point.clone(), 0))
                 .build();
 
-            let mut seen_inputs = FnvHashSet::default();
+            let mut seen_inputs = HashSet::new();
             let result1 =
                 resolve_transaction(&tx1, &mut seen_inputs, &cell_provider, &header_checker);
             assert!(result1.is_ok());
@@ -878,7 +875,7 @@ mod tests {
                 .cell_dep(CellDep::new_cell(out_point.clone()))
                 .build();
 
-            let mut seen_inputs = FnvHashSet::default();
+            let mut seen_inputs = HashSet::new();
             let result1 =
                 resolve_transaction(&tx1, &mut seen_inputs, &cell_provider, &header_checker);
 

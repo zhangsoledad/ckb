@@ -144,7 +144,7 @@ impl<'a, CS: ChainStore<'a>> RewardCalculator<'a, CS> {
             1 + proposal_window.closest(),
         );
 
-        let mut proposed: HashSet<ProposalShortId> = HashSet::default();
+        let mut proposed: HashSet<ProposalShortId> = HashSet::new();
         let mut index = parent.to_owned();
 
         // NOTE: We have to ensure that `committed_idx_proc` and `txs_fees_proc` return in the
@@ -228,7 +228,7 @@ impl<'a, CS: ChainStore<'a>> RewardCalculator<'a, CS> {
     }
 
     fn get_proposal_ids_by_hash(&self, hash: &H256) -> HashSet<ProposalShortId> {
-        let mut ids_set = HashSet::default();
+        let mut ids_set = HashSet::new();
         if let Some(ids) = self.store.get_block_proposal_txs_ids(&hash) {
             ids_set.extend(ids)
         }

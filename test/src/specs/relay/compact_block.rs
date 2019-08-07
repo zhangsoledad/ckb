@@ -11,8 +11,8 @@ use ckb_dao::DaoCalculator;
 use ckb_protocol::{get_root, RelayMessage, RelayPayload, SyncMessage, SyncPayload};
 use ckb_sync::NetworkProtocol;
 use ckb_test_chain_utils::MockStore;
-use fnv::FnvHashSet;
 use numext_fixed_hash::{h256, H256};
+use std::collections::HashSet;
 use std::time::Duration;
 
 pub struct CompactBlockEmptyParentUnknown;
@@ -330,7 +330,7 @@ impl Spec for CompactBlockRelayParentOfOrphanBlock {
             .new_block_builder(None, None, None)
             .transaction(new_tx)
             .build();
-        let mut seen_inputs = FnvHashSet::default();
+        let mut seen_inputs = HashSet::new();
         let rtxs: Vec<ResolvedTransaction> = parent
             .transactions()
             .iter()
@@ -359,7 +359,7 @@ impl Spec for CompactBlockRelayParentOfOrphanBlock {
             .build();
         let rtxs =
             vec![
-                resolve_transaction(&cellbase, &mut Default::default(), &mock_store, &mock_store)
+                resolve_transaction(&cellbase, &mut HashSet::new(), &mock_store, &mock_store)
                     .unwrap(),
             ];
         let dao = DaoCalculator::new(&consensus, mock_store.store())

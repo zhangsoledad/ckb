@@ -8,35 +8,27 @@ use ckb_core::header::Header;
 use ckb_core::script::Script;
 use ckb_core::transaction::CellInput;
 use ckb_store::ChainStore;
-use ckb_traits::ChainProvider;
 use std::collections::HashSet;
 
 //TODO: cellbase, witness
 #[derive(Clone)]
-pub struct BlockVerifier<P> {
-    provider: P,
+pub struct BlockVerifier<'a> {
+    consensus: &'a Consensus,
 }
 
-impl<P> BlockVerifier<P>
-where
-    P: ChainProvider + Clone,
-{
-    pub fn new(provider: P) -> Self {
-        BlockVerifier { provider }
+impl<'a> BlockVerifier<'a> {
+    pub fn new(consensus: &'a Consensus) -> Self {
+        BlockVerifier { consensus }
     }
 }
 
-impl<P> Verifier for BlockVerifier<P>
-where
-    P: ChainProvider + Clone,
-{
+impl<'a> Verifier for BlockVerifier<'a> {
     type Target = Block;
 
     fn verify(&self, target: &Block) -> Result<(), Error> {
-        let consensus = self.provider.consensus();
-        let proof_size = consensus.pow_engine().proof_size();
-        let max_block_proposals_limit = consensus.max_block_proposals_limit();
-        let max_block_bytes = consensus.max_block_bytes();
+        let proof_size = self.consensus.pow_engine().proof_size();
+        let max_block_proposals_limit = self.consensus.max_block_proposals_limit();
+        let max_block_bytes = self.consensus.max_block_bytes();
         BlockProposalsLimitVerifier::new(max_block_proposals_limit).verify(target)?;
         BlockBytesVerifier::new(max_block_bytes, proof_size).verify(target)?;
         CellbaseVerifier::new().verify(target)?;

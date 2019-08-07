@@ -50,21 +50,22 @@ pub const TX_HASHES_TOKEN: u64 = 2;
 
 pub const MAX_RELAY_PEERS: usize = 128;
 
+#[derive(Clone)]
 pub struct Relayer {
     chain: ChainController,
     pub(crate) shared: Arc<SyncSharedState>,
     pub(crate) tx_pool_executor: Arc<TxPoolExecutor>,
 }
 
-impl Clone for Relayer {
-    fn clone(&self) -> Self {
-        Relayer {
-            chain: self.chain.clone(),
-            shared: Arc::clone(&self.shared),
-            tx_pool_executor: Arc::clone(&self.tx_pool_executor),
-        }
-    }
-}
+// impl Clone for Relayer {
+//     fn clone(&self) -> Self {
+//         Relayer {
+//             chain: self.chain.clone(),
+//             shared: Arc::clone(&self.shared),
+//             tx_pool_executor: Arc::clone(&self.tx_pool_executor),
+//         }
+//     }
+// }
 
 impl Relayer {
     pub fn new(chain: ChainController, shared: Arc<SyncSharedState>) -> Self {
@@ -194,8 +195,7 @@ impl Relayer {
             .iter()
             .chain(block.uncles.iter().flat_map(UncleBlock::proposals));
         let fresh_proposals: Vec<ProposalShortId> = {
-            let chain_state = self.shared.lock_chain_state();
-            let tx_pool = chain_state.tx_pool();
+            let tx_pool = self.shared.shared().try_lock_tx_pool();
             proposals
                 .filter(|id| !tx_pool.contains_proposal_id(id))
                 .cloned()
@@ -296,9 +296,9 @@ impl Relayer {
             .collect();
 
         if !short_ids_set.is_empty() {
-            let chain_state = self.shared().lock_chain_state();
+            let tx_pool = self.shared.shared().try_lock_tx_pool();
             short_ids_set.into_iter().for_each(|short_id| {
-                if let Some(tx) = chain_state.get_tx_from_pool_or_store(&short_id) {
+                if let Some(tx) = tx_pool.get_tx_from_pool_or_store(&short_id) {
                     txs_map.insert(*short_id, tx);
                 }
             })
@@ -366,8 +366,7 @@ impl Relayer {
         let get_block_proposals = self.shared().clear_get_block_proposals();
         let mut peer_txs = FnvHashMap::default();
         {
-            let chain_state = self.shared.lock_chain_state();
-            let tx_pool = chain_state.tx_pool();
+            let tx_pool = self.shared.shared().try_lock_tx_pool();
             for (id, peer_indices) in get_block_proposals.into_iter() {
                 if let Some(tx) = tx_pool.get_tx(&id) {
                     for peer_index in peer_indices {

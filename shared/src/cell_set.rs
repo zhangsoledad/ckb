@@ -85,7 +85,7 @@ impl CellSet {
         store: &'a CS,
     ) -> CellSetOverlay<'a> {
         let mut new = HashMap::default();
-        let mut removed = HashSet::default();
+        let mut removed = HashSet::new();
 
         for hash in &diff.old_outputs {
             if self.inner.get(&hash).is_some() {

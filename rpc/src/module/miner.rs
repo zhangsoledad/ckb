@@ -5,7 +5,7 @@ use ckb_logger::{debug, error};
 use ckb_miner::BlockAssemblerController;
 use ckb_network::NetworkController;
 use ckb_protocol::RelayMessage;
-use ckb_shared::shared::Shared;
+use ckb_shared::{shared::Shared, Snapshot};
 use ckb_sync::NetworkProtocol;
 use ckb_traits::ChainProvider;
 use ckb_verification::{HeaderResolverWrapper, HeaderVerifier, Verifier};
@@ -80,11 +80,9 @@ impl MinerRpc for MinerRpcImpl {
             self.shared.consensus(),
         );
         let header_verify_ret = {
-            let chain_state = self.shared.lock_chain_state();
-            let header_verifier = HeaderVerifier::new(
-                &*chain_state,
-                Arc::clone(&self.shared.consensus().pow_engine()),
-            );
+            let snapshot: &Snapshot = &self.shared.snapshot();
+            let header_verifier =
+                HeaderVerifier::new(snapshot, Arc::clone(&self.shared.consensus().pow_engine()));
             header_verifier.verify(&resolver)
         };
         if header_verify_ret.is_ok() {

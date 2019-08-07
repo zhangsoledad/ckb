@@ -8,9 +8,9 @@ use ckb_core::BlockNumber;
 use ckb_logger::debug_target;
 use ckb_network::{CKBProtocolContext, PeerIndex};
 use ckb_protocol::{CompactBlock as FbsCompactBlock, RelayMessage};
-use ckb_shared::shared::Shared;
+use ckb_shared::Snapshot;
 use ckb_store::ChainStore;
-use ckb_traits::{BlockMedianTimeContext, ChainProvider};
+use ckb_traits::BlockMedianTimeContext;
 use ckb_verification::{HeaderResolver, HeaderVerifier, Verifier};
 use failure::Error as FailureError;
 use flatbuffers::FlatBufferBuilder;
@@ -57,13 +57,10 @@ impl<'a> CompactBlockProcess<'a> {
 
         // Only accept blocks with a height greater than tip - N
         // where N is the current epoch length
-        let (lowest_number, tip) = {
-            let cs = self.relayer.shared.lock_chain_state();
-            let epoch_length = cs.current_epoch_ext().length();
-            let tip = cs.tip_header().clone();
-
-            (tip.number().saturating_sub(epoch_length), tip)
-        };
+        let snapshot: &Snapshot = &self.relayer.shared.snapshot();
+        let tip = snapshot.tip_header().clone();
+        let epoch_length = snapshot.epoch_ext().length();
+        let lowest_number = tip.number().saturating_sub(epoch_length);
 
         if lowest_number > compact_block.header.number() {
             return Err(Error::Ignored(Ignored::TooOldBlock).into());
@@ -151,11 +148,12 @@ impl<'a> CompactBlockProcess<'a> {
                     .relayer
                     .shared
                     .new_header_resolver(&compact_block.header, parent.into_inner());
+                let median_time_context = CompactBlockMedianTimeView {
+                    fn_get_pending_header: Box::new(fn_get_pending_header),
+                    snapshot,
+                };
                 let header_verifier = HeaderVerifier::new(
-                    CompactBlockMedianTimeView {
-                        fn_get_pending_header: Box::new(fn_get_pending_header),
-                        shared: self.relayer.shared.shared(),
-                    },
+                    &median_time_context,
                     Arc::clone(&self.relayer.shared.consensus().pow_engine()),
                 );
                 if let Err(err) = header_verifier.verify(&resolver) {
@@ -237,19 +235,19 @@ impl<'a> CompactBlockProcess<'a> {
 
 struct CompactBlockMedianTimeView<'a> {
     fn_get_pending_header: Box<Fn(H256) -> Option<Header> + 'a>,
-    shared: &'a Shared,
+    snapshot: &'a Snapshot,
 }
 
 impl<'a> CompactBlockMedianTimeView<'a> {
     fn get_header(&self, hash: &H256) -> Option<Header> {
         (self.fn_get_pending_header)(hash.to_owned())
-            .or_else(|| self.shared.store().get_block_header(hash))
+            .or_else(|| self.snapshot.get_block_header(hash))
     }
 }
 
 impl<'a> BlockMedianTimeContext for CompactBlockMedianTimeView<'a> {
     fn median_block_count(&self) -> u64 {
-        self.shared.consensus().median_time_block_count() as u64
+        self.snapshot.consensus().median_time_block_count() as u64
     }
 
     fn timestamp_and_parent(&self, block_hash: &H256) -> (u64, BlockNumber, H256) {

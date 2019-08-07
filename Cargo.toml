@@ -32,6 +32,7 @@ members = [
     "util/app-config",
     "script/data-loader",
     "util/reward-calculator",
+    "util/proposal-table",
     "shared/tx-pool-executor",
     "ckb-bin",
     "traits",

@@ -66,6 +66,7 @@ fn test_reconstruct_block() {
         // Should reconstruct block successfully with pool txs
         let (pool_transactions, short_transactions) = short_transactions.split_at(2);
         let short_transactions: Vec<Transaction> = short_transactions.to_vec();
+
         pool_transactions.iter().for_each(|tx| {
             // `tx` is added into pool but not be proposed, since `tx` has not been proposal yet
             relayer

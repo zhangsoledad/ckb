@@ -20,9 +20,9 @@ use std::sync::Arc;
 #[test]
 fn test_find_fork_case1() {
     let builder = SharedBuilder::default();
-    let shared = builder.consensus(Consensus::default()).build().unwrap();
+    let (shared, table) = builder.consensus(Consensus::default()).build().unwrap();
     let notify = NotifyService::default().start::<&str>(None);
-    let mut chain_service = ChainService::new(shared.clone(), notify);
+    let mut chain_service = ChainService::new(shared.clone(), table, notify);
     let genesis = shared
         .store()
         .get_block_header(&shared.store().get_block_hash(0).unwrap())
@@ -54,7 +54,7 @@ fn test_find_fork_case1() {
             .unwrap();
     }
 
-    let tip_number = { shared.lock_chain_state().tip_number() };
+    let tip_number = { shared.snapshot().tip_number() };
 
     // fork2 total_difficulty 470
     fork2.gen_empty_block_with_difficulty(200u64, &mock_store);
@@ -91,9 +91,9 @@ fn test_find_fork_case1() {
 #[test]
 fn test_find_fork_case2() {
     let builder = SharedBuilder::default();
-    let shared = builder.consensus(Consensus::default()).build().unwrap();
+    let (shared, table) = builder.consensus(Consensus::default()).build().unwrap();
     let notify = NotifyService::default().start::<&str>(None);
-    let mut chain_service = ChainService::new(shared.clone(), notify);
+    let mut chain_service = ChainService::new(shared.clone(), table, notify);
 
     let genesis = shared
         .store()
@@ -125,7 +125,7 @@ fn test_find_fork_case2() {
             .unwrap();
     }
 
-    let tip_number = { shared.lock_chain_state().tip_number() };
+    let tip_number = { shared.snapshot().tip_number() };
 
     // fork2 total_difficulty 570
     fork2.gen_empty_block(200u64, &mock_store);
@@ -162,9 +162,9 @@ fn test_find_fork_case2() {
 #[test]
 fn test_find_fork_case3() {
     let builder = SharedBuilder::default();
-    let shared = builder.consensus(Consensus::default()).build().unwrap();
+    let (shared, table) = builder.consensus(Consensus::default()).build().unwrap();
     let notify = NotifyService::default().start::<&str>(None);
-    let mut chain_service = ChainService::new(shared.clone(), notify);
+    let mut chain_service = ChainService::new(shared.clone(), table, notify);
 
     let genesis = shared
         .store()
@@ -197,7 +197,7 @@ fn test_find_fork_case3() {
             .unwrap();
     }
 
-    let tip_number = { shared.lock_chain_state().tip_number() };
+    let tip_number = { shared.snapshot().tip_number() };
 
     // fork2 total_difficulty 300
     fork2.gen_empty_block_with_difficulty(100u64, &mock_store);
@@ -233,9 +233,9 @@ fn test_find_fork_case3() {
 #[test]
 fn test_find_fork_case4() {
     let builder = SharedBuilder::default();
-    let shared = builder.consensus(Consensus::default()).build().unwrap();
+    let (shared, table) = builder.consensus(Consensus::default()).build().unwrap();
     let notify = NotifyService::default().start::<&str>(None);
-    let mut chain_service = ChainService::new(shared.clone(), notify);
+    let mut chain_service = ChainService::new(shared.clone(), table, notify);
 
     let genesis = shared
         .store()
@@ -268,7 +268,7 @@ fn test_find_fork_case4() {
             .unwrap();
     }
 
-    let tip_number = { shared.lock_chain_state().tip_number() };
+    let tip_number = { shared.snapshot().tip_number() };
 
     // fork2 total_difficulty 260
     fork2.gen_empty_block_with_difficulty(100u64, &mock_store);

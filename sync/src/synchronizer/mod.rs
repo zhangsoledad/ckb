@@ -199,10 +199,10 @@ impl Synchronizer {
             if state.peer_flags.is_outbound {
                 let best_known_header = state.best_known_header.as_ref();
                 let (tip_header, local_total_difficulty) = {
-                    let chain_state = self.shared.lock_chain_state();
+                    let snapshot = self.shared.snapshot();
                     (
-                        chain_state.tip_header().to_owned(),
-                        chain_state.total_difficulty().to_owned(),
+                        snapshot.tip_header().to_owned(),
+                        snapshot.total_difficulty().to_owned(),
                     )
                 };
                 if best_known_header.map(HeaderView::total_difficulty)
@@ -286,10 +286,10 @@ impl Synchronizer {
 
         let tip = {
             let (header, total_difficulty) = {
-                let chain_state = self.shared.lock_chain_state();
+                let snapshot = self.shared.snapshot();
                 (
-                    chain_state.tip_header().to_owned(),
-                    chain_state.total_difficulty().to_owned(),
+                    snapshot.tip_header().to_owned(),
+                    snapshot.total_difficulty().to_owned(),
                 )
             };
             let best_known = self.shared.shared_best_header();
@@ -499,17 +499,19 @@ mod tests {
     };
     use ckb_notify::{NotifyController, NotifyService};
     use ckb_protocol::{Block as FbsBlock, Headers as FbsHeaders};
-    use ckb_shared::shared::Shared;
-    use ckb_shared::shared::SharedBuilder;
+    use ckb_shared::{
+        shared::{Shared, SharedBuilder},
+        Snapshot,
+    };
     use ckb_store::ChainStore;
     use ckb_traits::chain_provider::ChainProvider;
     use ckb_util::Mutex;
     #[cfg(not(disable_faketime))]
     use faketime;
     use flatbuffers::{get_root, FlatBufferBuilder};
-    use fnv::{FnvHashMap, FnvHashSet};
     use futures::future::Future;
     use numext_fixed_uint::U256;
+    use std::collections::{HashMap, HashSet};
     use std::ops::Deref;
     use std::time::Duration;
 
@@ -522,10 +524,10 @@ mod tests {
         let consensus = consensus.unwrap_or_else(Default::default);
         builder = builder.consensus(consensus);
 
-        let shared = builder.build().unwrap();
+        let (shared, table) = builder.build().unwrap();
 
         let notify = notify.unwrap_or_else(|| NotifyService::default().start::<&str>(None));
-        let chain_service = ChainService::new(shared.clone(), notify.clone());
+        let chain_service = ChainService::new(shared.clone(), table, notify.clone());
         let chain_controller = chain_service.start::<&str>(None);
 
         (chain_controller, shared, notify)
@@ -555,14 +557,9 @@ mod tests {
         let number = parent_header.number() + 1;
         let cellbase = create_cellbase(shared, parent_header, number);
         let dao = {
-            let chain_state = shared.lock_chain_state();
-            let resolved_cellbase = resolve_transaction(
-                &cellbase,
-                &mut Default::default(),
-                &*chain_state,
-                &*chain_state,
-            )
-            .unwrap();
+            let snapshot: &Snapshot = &shared.snapshot();
+            let resolved_cellbase =
+                resolve_transaction(&cellbase, &mut HashSet::new(), snapshot, snapshot).unwrap();
             DaoCalculator::new(shared.consensus(), shared.store())
                 .dao_field(&[resolved_cellbase], parent_header)
                 .unwrap()
@@ -621,7 +618,7 @@ mod tests {
 
         let locator = synchronizer
             .shared
-            .get_locator(shared.lock_chain_state().tip_header());
+            .get_locator(shared.snapshot().tip_header());
 
         let mut expect = Vec::new();
 
@@ -655,7 +652,7 @@ mod tests {
 
         let locator1 = synchronizer1
             .shared
-            .get_locator(shared1.lock_chain_state().tip_header());
+            .get_locator(shared1.snapshot().tip_header());
 
         let latest_common = synchronizer2
             .shared
@@ -723,7 +720,7 @@ mod tests {
         let synchronizer2 = gen_synchronizer(chain_controller2.clone(), shared2.clone());
         let locator1 = synchronizer1
             .shared
-            .get_locator(shared1.lock_chain_state().tip_header());
+            .get_locator(shared1.snapshot().tip_header());
 
         let latest_common = synchronizer2
             .shared
@@ -758,20 +755,17 @@ mod tests {
 
         let header = synchronizer
             .shared
-            .get_ancestor(&shared.lock_chain_state().tip_hash(), 100);
+            .get_ancestor(shared.snapshot().tip_header().hash(), 100);
         let tip = synchronizer
             .shared
-            .get_ancestor(&shared.lock_chain_state().tip_hash(), 199);
+            .get_ancestor(shared.snapshot().tip_header().hash(), 199);
         let noop = synchronizer
             .shared
-            .get_ancestor(&shared.lock_chain_state().tip_hash(), 200);
+            .get_ancestor(shared.snapshot().tip_header().hash(), 200);
         assert!(tip.is_some());
         assert!(header.is_some());
         assert!(noop.is_none());
-        assert_eq!(
-            tip.unwrap(),
-            shared.lock_chain_state().tip_header().to_owned()
-        );
+        assert_eq!(tip.unwrap(), shared.snapshot().tip_header().to_owned());
         assert_eq!(
             header.unwrap(),
             shared
@@ -815,10 +809,7 @@ mod tests {
                 .insert_new_block(&synchronizer.chain, peer, Arc::new(block))
                 .expect("Insert new block failed");
         });
-        assert_eq!(
-            chain1_last_block.header(),
-            shared2.lock_chain_state().tip_header()
-        );
+        assert_eq!(chain1_last_block.header(), shared2.snapshot().tip_header());
     }
 
     #[test]
@@ -862,8 +853,8 @@ mod tests {
 
     #[derive(Clone)]
     struct DummyNetworkContext {
-        pub peers: FnvHashMap<PeerIndex, Peer>,
-        pub disconnected: Arc<Mutex<FnvHashSet<PeerIndex>>>,
+        pub peers: HashMap<PeerIndex, Peer>,
+        pub disconnected: Arc<Mutex<HashSet<PeerIndex>>>,
     }
 
     fn mock_peer_info() -> Peer {
@@ -968,13 +959,13 @@ mod tests {
     }
 
     fn mock_network_context(peer_num: usize) -> DummyNetworkContext {
-        let mut peers = FnvHashMap::default();
+        let mut peers = HashMap::default();
         for peer in 0..peer_num {
             peers.insert(peer.into(), mock_peer_info());
         }
         DummyNetworkContext {
             peers,
-            disconnected: Arc::new(Mutex::new(FnvHashSet::default())),
+            disconnected: Arc::new(Mutex::new(HashSet::default())),
         }
     }
 
@@ -997,7 +988,7 @@ mod tests {
 
         let locator1 = synchronizer1
             .shared
-            .get_locator(&shared1.lock_chain_state().tip_header());
+            .get_locator(&shared1.snapshot().tip_header());
 
         for i in 1..=num {
             let j = if i > 192 { i + 1 } else { i };
@@ -1123,7 +1114,7 @@ mod tests {
         let disconnected = network_context.disconnected.lock();
         assert_eq!(
             disconnected.deref(),
-            &FnvHashSet::from_iter(vec![0, 1, 2].into_iter().map(Into::into))
+            &HashSet::from_iter(vec![0, 1, 2].into_iter().map(Into::into))
         )
     }
 
@@ -1146,10 +1137,7 @@ mod tests {
 
         let (chain_controller, shared, _notify) = start_chain(Some(consensus), None);
 
-        assert_eq!(
-            shared.lock_chain_state().total_difficulty(),
-            &U256::from(2u64)
-        );
+        assert_eq!(shared.snapshot().total_difficulty(), &U256::from(2u64));
 
         let synchronizer = gen_synchronizer(chain_controller.clone(), shared.clone());
 
@@ -1247,9 +1235,9 @@ mod tests {
             // where we checked against our tip.
             // Either way, set a new timeout based on current tip.
             let (tip, total_difficulty) = {
-                let chain_state = shared.lock_chain_state();
-                let header = chain_state.tip_header().to_owned();
-                let total_difficulty = chain_state.total_difficulty().to_owned();
+                let snapshot = shared.snapshot();
+                let header = snapshot.tip_header().to_owned();
+                let total_difficulty = snapshot.total_difficulty().to_owned();
                 (header, total_difficulty)
             };
             assert_eq!(
@@ -1329,7 +1317,7 @@ mod tests {
             let disconnected = network_context.disconnected.lock();
             assert_eq!(
                 disconnected.deref(),
-                &FnvHashSet::from_iter(vec![3, 4].into_iter().map(Into::into))
+                &HashSet::from_iter(vec![3, 4].into_iter().map(Into::into))
             )
         }
     }

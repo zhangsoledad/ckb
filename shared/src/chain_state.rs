@@ -124,7 +124,7 @@ impl ChainState {
         let proposal_start = tip_number.saturating_sub(proposal_window.farthest());
         for bn in proposal_start..=tip_number {
             if let Some(hash) = store.get_block_hash(bn) {
-                let mut ids_set = HashSet::default();
+                let mut ids_set = HashSet::new();
                 if let Some(ids) = store.get_block_proposal_txs_ids(&hash) {
                     ids_set.extend(ids)
                 }
@@ -403,7 +403,7 @@ impl ChainState {
         let gap_and_proposed_provider = OverlayCellProvider::new(&tx_pool.gap, &proposed_provider);
         let pending_and_proposed_provider =
             OverlayCellProvider::new(&tx_pool.pending, &gap_and_proposed_provider);
-        let mut seen_inputs = HashSet::default();
+        let mut seen_inputs = HashSet::new();
         resolve_transaction(tx, &mut seen_inputs, &pending_and_proposed_provider, self)
     }
 
@@ -413,7 +413,7 @@ impl ChainState {
         tx_pool: &TxPool,
     ) -> Result<ResolvedTransaction<'a>, UnresolvableError> {
         let cell_provider = OverlayCellProvider::new(&tx_pool.proposed, self);
-        let mut seen_inputs = HashSet::default();
+        let mut seen_inputs = HashSet::new();
         resolve_transaction(tx, &mut seen_inputs, &cell_provider, self)
     }
 
