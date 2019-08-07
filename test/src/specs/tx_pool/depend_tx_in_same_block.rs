@@ -39,7 +39,7 @@ impl Spec for DepentTxInSameBlock {
             .map(Transaction::hash)
             .collect();
 
-        assert!(commit_txs_hash.contains(&&tx_hash_0));
-        assert!(commit_txs_hash.contains(&&tx_hash_1));
+        assert!(commit_txs_hash.contains(&tx_hash_0));
+        assert!(commit_txs_hash.contains(&tx_hash_1));
     }
 }

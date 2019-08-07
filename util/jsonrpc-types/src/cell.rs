@@ -1,5 +1,5 @@
 use crate::{Capacity, CellOutput, OutPoint, Script};
-use ckb_core::cell::CellStatus;
+use ckb_types::core::cell::CellStatus;
 use serde_derive::{Deserialize, Serialize};
 
 // This is used as return value of get_cells_by_lock_hash RPC:

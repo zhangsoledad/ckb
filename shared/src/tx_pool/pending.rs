@@ -1,7 +1,13 @@
 use crate::tx_pool::types::PendingEntry;
-use ckb_core::cell::{CellMetaBuilder, CellProvider, CellStatus};
-use ckb_core::transaction::{OutPoint, ProposalShortId, Transaction};
-use ckb_core::Cycle;
+use ckb_types::{
+    core::{
+        cell::{CellMetaBuilder, CellProvider, CellStatus},
+        Cycle, TransactionView,
+    },
+    packed::{OutPoint, ProposalShortId},
+    prelude::*,
+    H256,
+};
 use ckb_util::{LinkedFnvHashMap, LinkedFnvHashMapEntries};
 
 #[derive(Default, Debug, Clone)]
@@ -24,7 +30,7 @@ impl PendingQueue {
         &mut self,
         cycles: Option<Cycle>,
         size: usize,
-        tx: Transaction,
+        tx: TransactionView,
     ) -> Option<PendingEntry> {
         let short_id = tx.proposal_short_id();
         self.inner
@@ -39,7 +45,7 @@ impl PendingQueue {
         self.inner.get(id)
     }
 
-    pub(crate) fn get_tx(&self, id: &ProposalShortId) -> Option<&Transaction> {
+    pub(crate) fn get_tx(&self, id: &ProposalShortId) -> Option<&TransactionView> {
         self.get(id).map(|x| &x.transaction)
     }
 
@@ -58,14 +64,12 @@ impl PendingQueue {
 
 impl CellProvider for PendingQueue {
     fn cell(&self, o: &OutPoint) -> CellStatus {
-        if let Some(cell_out_point) = &o.cell {
-            if let Some(x) = self
-                .inner
-                .get(&ProposalShortId::from_tx_hash(&cell_out_point.tx_hash))
-            {
+        if let Some(cell_out_point) = &o.cell().to_opt() {
+            let hash: H256 = cell_out_point.tx_hash().unpack();
+            if let Some(x) = self.inner.get(&ProposalShortId::from_tx_hash(&hash)) {
                 match x
                     .transaction
-                    .get_output_with_data(cell_out_point.index as usize)
+                    .output_with_data(cell_out_point.index().unpack())
                 {
                     Some((output, data)) => CellStatus::live_cell(
                         CellMetaBuilder::from_cell_output(output.to_owned(), data)

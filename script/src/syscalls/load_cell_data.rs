@@ -5,7 +5,7 @@ use crate::{
     },
     DataLoader,
 };
-use ckb_core::cell::{CellMeta, ResolvedOutPoint};
+use ckb_types::core::cell::{CellMeta, ResolvedOutPoint};
 use ckb_vm::{
     memory::Memory,
     registers::{A0, A1, A2, A3, A4, A5, A6, A7},

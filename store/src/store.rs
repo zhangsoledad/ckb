@@ -6,25 +6,24 @@ use crate::{
     META_TIP_HEADER_KEY,
 };
 use ckb_chain_spec::consensus::Consensus;
-use ckb_core::block::{Block, BlockBuilder};
-use ckb_core::cell::{BlockInfo, CellMeta};
-use ckb_core::extras::{BlockExt, EpochExt, TransactionInfo};
-use ckb_core::header::{BlockNumber, Header};
-use ckb_core::transaction::{CellOutPoint, ProposalShortId, Transaction};
-use ckb_core::transaction_meta::TransactionMeta;
-use ckb_core::uncle::UncleBlock;
-use ckb_core::{Bytes, EpochNumber};
 use ckb_db::Col;
-use ckb_protos as protos;
-use numext_fixed_hash::H256;
-use std::convert::TryInto;
+use ckb_types::{
+    bytes::Bytes,
+    core::{
+        cell::{BlockInfo, CellMeta, TransactionMeta},
+        BlockBodyView, BlockExt, BlockNumber, BlockView, EpochExt, EpochNumber, HeaderView,
+        TransactionView, UncleBlockVecView,
+    },
+    packed,
+    prelude::*,
+};
 
 pub trait ChainStore<'a>: Send + Sync {
     type Vector: AsRef<[u8]>;
     fn get(&'a self, col: Col, key: &[u8]) -> Option<Self::Vector>;
 
     /// Get block by block header hash
-    fn get_block(&'a self, h: &H256) -> Option<Block> {
+    fn get_block(&'a self, h: &packed::Byte32) -> Option<BlockView> {
         self.get_block_header(h).map(|header| {
             let transactions = self
                 .get_block_body(h)
@@ -35,160 +34,179 @@ pub trait ChainStore<'a>: Send + Sync {
             let proposals = self
                 .get_block_proposal_txs_ids(h)
                 .expect("block proposal_ids must be stored");
-            BlockBuilder::default()
-                .header(header)
-                .uncles(uncles)
-                .transactions(transactions)
-                .proposals(proposals)
-                .build()
+            BlockView::new_unchecked(header, uncles, transactions, proposals)
         })
     }
 
     /// Get header by block header hash
-    fn get_block_header(&'a self, hash: &H256) -> Option<Header> {
+    fn get_block_header(&'a self, hash: &packed::Byte32) -> Option<HeaderView> {
         {
             if let Some(header) = HEADER_CACHE.lock().get_refresh(hash) {
                 return Some(header.clone());
             }
         }
-        self.get(COLUMN_BLOCK_HEADER, hash.as_bytes())
+        self.get(COLUMN_BLOCK_HEADER, hash.as_slice())
             .map(|slice| {
-                protos::StoredHeader::from_slice(&slice.as_ref())
-                    .try_into()
-                    .expect("deserialize")
+                packed::HeaderViewReader::from_slice(&slice.as_ref())
+                    .should_be_ok()
+                    .unpack()
             })
-            .map(|header: Header| {
+            .map(|header: HeaderView| {
                 HEADER_CACHE.lock().insert(hash.clone(), header.clone());
                 header
             })
     }
 
     /// Get block body by block header hash
-    fn get_block_body(&'a self, hash: &H256) -> Option<Vec<Transaction>> {
-        self.get(COLUMN_BLOCK_BODY, hash.as_bytes()).map(|slice| {
-            protos::StoredBlockBody::from_slice(&slice.as_ref())
-                .try_into()
-                .expect("deserialize")
+    fn get_block_body(&'a self, hash: &packed::Byte32) -> Option<BlockBodyView> {
+        self.get(COLUMN_BLOCK_BODY, hash.as_slice()).map(|slice| {
+            packed::BlockBodyViewReader::from_slice(&slice.as_ref())
+                .should_be_ok()
+                .unpack()
         })
     }
 
     /// Get all transaction-hashes in block body by block header hash
-    fn get_block_txs_hashes(&'a self, hash: &H256) -> Option<Vec<H256>> {
-        self.get(COLUMN_BLOCK_BODY, hash.as_bytes()).map(|slice| {
-            protos::StoredBlockBody::from_slice(&slice.as_ref())
+    fn get_block_txs_hashes(&'a self, hash: &packed::Byte32) -> Option<packed::Byte32Vec> {
+        self.get(COLUMN_BLOCK_BODY, hash.as_slice()).map(|slice| {
+            packed::BlockBodyViewReader::from_slice(&slice.as_ref())
+                .should_be_ok()
                 .tx_hashes()
-                .expect("deserialize")
+                .to_entity()
         })
     }
 
     /// Get proposal short id by block header hash
-    fn get_block_proposal_txs_ids(&'a self, hash: &H256) -> Option<Vec<ProposalShortId>> {
-        self.get(COLUMN_BLOCK_PROPOSAL_IDS, hash.as_bytes())
+    fn get_block_proposal_txs_ids(
+        &'a self,
+        hash: &packed::Byte32,
+    ) -> Option<packed::ProposalShortIdVec> {
+        self.get(COLUMN_BLOCK_PROPOSAL_IDS, hash.as_slice())
             .map(|slice| {
-                protos::StoredProposalShortIds::from_slice(&slice.as_ref())
-                    .try_into()
-                    .expect("deserialize")
+                packed::ProposalShortIdVecReader::from_slice(&slice.as_ref())
+                    .should_be_ok()
+                    .to_entity()
             })
     }
 
     /// Get block uncles by block header hash
-    fn get_block_uncles(&'a self, hash: &H256) -> Option<Vec<UncleBlock>> {
-        self.get(COLUMN_BLOCK_UNCLE, hash.as_bytes()).map(|slice| {
-            protos::StoredUncleBlocks::from_slice(&slice.as_ref())
-                .try_into()
-                .expect("deserialize")
+    fn get_block_uncles(&'a self, hash: &packed::Byte32) -> Option<UncleBlockVecView> {
+        self.get(COLUMN_BLOCK_UNCLE, hash.as_slice()).map(|slice| {
+            packed::UncleBlockVecViewReader::from_slice(&slice.as_ref())
+                .should_be_ok()
+                .unpack()
         })
     }
 
     /// Get block ext by block header hash
-    fn get_block_ext(&'a self, block_hash: &H256) -> Option<BlockExt> {
-        self.get(COLUMN_BLOCK_EXT, block_hash.as_bytes())
+    fn get_block_ext(&'a self, block_hash: &packed::Byte32) -> Option<BlockExt> {
+        self.get(COLUMN_BLOCK_EXT, block_hash.as_slice())
             .map(|slice| {
-                protos::BlockExt::from_slice(&slice.as_ref()[..])
-                    .try_into()
-                    .expect("deserialize")
+                packed::BlockExtReader::from_slice(&slice.as_ref()[..])
+                    .should_be_ok()
+                    .unpack()
             })
     }
 
     /// Get block header hash by block number
-    fn get_block_hash(&'a self, number: BlockNumber) -> Option<H256> {
-        self.get(COLUMN_INDEX, &number.to_le_bytes())
-            .map(|raw| H256::from_slice(&raw.as_ref()[..]).expect("db safe access"))
-    }
-
-    /// Get block number by block header hash
-    fn get_block_number(&'a self, hash: &H256) -> Option<BlockNumber> {
-        self.get(COLUMN_INDEX, hash.as_bytes()).map(|raw| {
-            let le_bytes: [u8; 8] = raw.as_ref()[..].try_into().expect("should not be failed");
-            u64::from_le_bytes(le_bytes)
+    fn get_block_hash(&'a self, number: BlockNumber) -> Option<packed::Byte32> {
+        self.get(COLUMN_INDEX, number.pack().as_slice()).map(|raw| {
+            packed::Byte32Reader::from_slice(&raw.as_ref()[..])
+                .should_be_ok()
+                .to_entity()
         })
     }
 
-    fn get_tip_header(&'a self) -> Option<Header> {
+    /// Get block number by block header hash
+    fn get_block_number(&'a self, hash: &packed::Byte32) -> Option<BlockNumber> {
+        self.get(COLUMN_INDEX, hash.as_slice()).map(|raw| {
+            packed::Uint64Reader::from_slice(&raw.as_ref()[..])
+                .should_be_ok()
+                .unpack()
+        })
+    }
+
+    fn get_tip_header(&'a self) -> Option<HeaderView> {
         self.get(COLUMN_META, META_TIP_HEADER_KEY)
             .and_then(|raw| {
-                self.get_block_header(&H256::from_slice(&raw.as_ref()[..]).expect("db safe access"))
+                self.get_block_header(
+                    &packed::Byte32Reader::from_slice(&raw.as_ref()[..])
+                        .should_be_ok()
+                        .to_entity(),
+                )
             })
             .map(Into::into)
     }
 
     /// Get commit transaction and block hash by it's hash
-    fn get_transaction(&'a self, hash: &H256) -> Option<(Transaction, H256)> {
-        self.get_transaction_info(&hash).and_then(|info| {
-            self.get(COLUMN_BLOCK_BODY, info.block_hash.as_bytes())
+    fn get_transaction(
+        &'a self,
+        hash: &packed::Byte32,
+    ) -> Option<(TransactionView, packed::Byte32)> {
+        self.get_transaction_info(hash).and_then(|info| {
+            self.get(COLUMN_BLOCK_BODY, info.block_hash().as_slice())
                 .and_then(|slice| {
-                    protos::StoredBlockBody::from_slice(&slice.as_ref())
-                        .transaction(info.index)
-                        .expect("deserialize")
-                        .map(|tx| (tx, info.block_hash))
+                    packed::BlockBodyViewReader::from_slice(&slice.as_ref())
+                        .should_be_ok()
+                        .transaction(info.index().unpack())
+                        .map(|tx| (tx, info.block_hash()))
                 })
         })
     }
 
-    fn get_transaction_info(&'a self, hash: &H256) -> Option<TransactionInfo> {
-        self.get(COLUMN_TRANSACTION_INFO, hash.as_bytes())
+    fn get_transaction_info(&'a self, hash: &packed::Byte32) -> Option<packed::TransactionInfo> {
+        self.get(COLUMN_TRANSACTION_INFO, hash.as_slice())
             .map(|slice| {
-                protos::StoredTransactionInfo::from_slice(&slice.as_ref())
-                    .try_into()
-                    .expect("deserialize")
+                packed::TransactionInfoReader::from_slice(&slice.as_ref())
+                    .should_be_ok()
+                    .to_entity()
             })
     }
 
-    fn get_tx_meta(&'a self, tx_hash: &H256) -> Option<TransactionMeta> {
-        self.get(COLUMN_CELL_SET, tx_hash.as_bytes()).map(|slice| {
-            protos::TransactionMeta::from_slice(&slice.as_ref())
-                .try_into()
-                .expect("deserialize")
+    fn get_tx_meta(&'a self, tx_hash: &packed::Byte32) -> Option<TransactionMeta> {
+        self.get(COLUMN_CELL_SET, tx_hash.as_slice()).map(|slice| {
+            packed::TransactionMetaReader::from_slice(&slice.as_ref())
+                .should_be_ok()
+                .unpack()
         })
     }
 
-    fn get_cell_meta(&'a self, tx_hash: &H256, index: u32) -> Option<CellMeta> {
-        self.get_transaction_info(&tx_hash)
+    fn get_cell_meta(&'a self, tx_hash: &packed::Byte32, index: u32) -> Option<CellMeta> {
+        self.get_transaction_info(tx_hash)
             .and_then(|tx_info| {
-                let tx_info_index = tx_info.index;
-                self.get(COLUMN_BLOCK_BODY, tx_info.block_hash.as_bytes())
+                let tx_index: usize = tx_info.index().unpack();
+                self.get(COLUMN_BLOCK_BODY, tx_info.block_hash().as_slice())
                     .and_then(|slice| {
-                        let deserialized = protos::StoredBlockBody::from_slice(&slice.as_ref());
-                        let cell_output = deserialized
-                            .output(tx_info_index, index as usize)
-                            .expect("db operation should be ok");
-                        let data = deserialized
-                            .output_data(tx_info_index, index as usize)
-                            .expect("db operation should be ok");
-                        cell_output
-                            .and_then(|cell_output| data.map(|data| (tx_info, cell_output, data)))
+                        packed::BlockBodyViewReader::from_slice(&slice.as_ref())
+                            .should_be_ok()
+                            .data()
+                            .get(tx_index)
+                            .and_then(|tx| {
+                                tx.slim()
+                                    .raw()
+                                    .outputs()
+                                    .get(index as usize)
+                                    .and_then(|output| {
+                                        let output = output.to_entity();
+                                        tx.outputs_data().get(index as usize).map(|data| {
+                                            let data_len = data.raw_data().len();
+                                            (tx_info, output, data_len as u64)
+                                        })
+                                    })
+                            })
                     })
             })
-            .map(|(tx_info, cell_output, data)| {
-                let out_point = CellOutPoint {
-                    tx_hash: tx_hash.to_owned(),
-                    index: index as u32,
-                };
-                let cellbase = tx_info.index == 0;
+            .map(|(tx_info, cell_output, data_bytes)| {
+                let out_point = packed::CellOutPoint::new_builder()
+                    .tx_hash(tx_hash.clone())
+                    .index(index.pack())
+                    .build();
+                let tx_index: u32 = tx_info.index().unpack();
+                let cellbase = tx_index == 0;
                 let block_info = BlockInfo {
-                    number: tx_info.block_number,
-                    epoch: tx_info.block_epoch,
-                    hash: tx_info.block_hash,
+                    number: tx_info.block_number().unpack(),
+                    epoch: tx_info.block_epoch().unpack(),
+                    hash: tx_info.block_hash().unpack(),
                 };
                 // notice mem_cell_data is set to None, the cell data should be load in need
                 CellMeta {
@@ -196,13 +214,13 @@ pub trait ChainStore<'a>: Send + Sync {
                     out_point,
                     block_info: Some(block_info),
                     cellbase,
-                    data_bytes: data.len() as u64,
+                    data_bytes,
                     mem_cell_data: None,
                 }
             })
     }
 
-    fn get_cell_data(&'a self, tx_hash: &H256, index: u32) -> Option<Bytes> {
+    fn get_cell_data(&'a self, tx_hash: &packed::Byte32, index: u32) -> Option<Bytes> {
         {
             if let Some(data) = CELL_DATA_CACHE
                 .lock()
@@ -212,13 +230,20 @@ pub trait ChainStore<'a>: Send + Sync {
             }
         }
 
-        self.get_transaction_info(&tx_hash)
+        self.get_transaction_info(tx_hash)
             .and_then(|info| {
-                self.get(COLUMN_BLOCK_BODY, info.block_hash.as_bytes())
+                let tx_index: usize = info.index().unpack();
+                self.get(COLUMN_BLOCK_BODY, info.block_hash().as_slice())
                     .and_then(|slice| {
-                        protos::StoredBlockBody::from_slice(&slice.as_ref())
-                            .output_data(info.index, index as usize)
-                            .expect("db operation should be ok")
+                        packed::BlockBodyViewReader::from_slice(&slice.as_ref())
+                            .should_be_ok()
+                            .data()
+                            .get(tx_index)
+                            .and_then(|tx| {
+                                tx.outputs_data()
+                                    .get(index as usize)
+                                    .map(|data| data.raw_data().into())
+                            })
                     })
             })
             .map(|data: Bytes| {
@@ -232,53 +257,60 @@ pub trait ChainStore<'a>: Send + Sync {
     // Get current epoch ext
     fn get_current_epoch_ext(&'a self) -> Option<EpochExt> {
         self.get(COLUMN_META, META_CURRENT_EPOCH_KEY).map(|slice| {
-            protos::StoredEpochExt::from_slice(&slice.as_ref())
-                .try_into()
-                .expect("deserialize")
+            packed::EpochExtReader::from_slice(&slice.as_ref())
+                .should_be_ok()
+                .unpack()
         })
     }
 
     // Get epoch ext by epoch index
-    fn get_epoch_ext(&'a self, hash: &H256) -> Option<EpochExt> {
-        self.get(COLUMN_EPOCH, hash.as_bytes()).map(|slice| {
-            protos::StoredEpochExt::from_slice(&slice.as_ref())
-                .try_into()
-                .expect("deserialize")
+    fn get_epoch_ext(&'a self, hash: &packed::Byte32) -> Option<EpochExt> {
+        self.get(COLUMN_EPOCH, hash.as_slice()).map(|slice| {
+            packed::EpochExtReader::from_slice(&slice.as_ref())
+                .should_be_ok()
+                .unpack()
         })
     }
 
     // Get epoch index by epoch number
-    fn get_epoch_index(&'a self, number: EpochNumber) -> Option<H256> {
-        self.get(COLUMN_EPOCH, &number.to_le_bytes())
-            .map(|raw| H256::from_slice(&raw.as_ref()).expect("db safe access"))
+    fn get_epoch_index(&'a self, number: EpochNumber) -> Option<packed::Byte32> {
+        self.get(COLUMN_EPOCH, number.pack().as_slice()).map(|raw| {
+            packed::Byte32Reader::from_slice(&raw.as_ref())
+                .should_be_ok()
+                .to_entity()
+        })
     }
 
     // Get epoch index by block hash
-    fn get_block_epoch_index(&'a self, block_hash: &H256) -> Option<H256> {
-        self.get(COLUMN_BLOCK_EPOCH, block_hash.as_bytes())
-            .map(|raw| H256::from_slice(&raw.as_ref()).expect("db safe access"))
+    fn get_block_epoch_index(&'a self, block_hash: &packed::Byte32) -> Option<packed::Byte32> {
+        self.get(COLUMN_BLOCK_EPOCH, block_hash.as_slice())
+            .map(|raw| {
+                packed::Byte32Reader::from_slice(&raw.as_ref())
+                    .should_be_ok()
+                    .to_entity()
+            })
     }
 
-    fn get_block_epoch(&'a self, hash: &H256) -> Option<EpochExt> {
+    fn get_block_epoch(&'a self, hash: &packed::Byte32) -> Option<EpochExt> {
         self.get_block_epoch_index(hash)
             .and_then(|index| self.get_epoch_ext(&index))
     }
 
-    fn is_uncle(&'a self, hash: &H256) -> bool {
-        self.get(COLUMN_UNCLES, hash.as_bytes()).is_some()
+    fn is_uncle(&'a self, hash: &packed::Byte32) -> bool {
+        self.get(COLUMN_UNCLES, hash.as_slice()).is_some()
     }
 
-    fn block_exists(&'a self, hash: &H256) -> bool {
-        self.get(COLUMN_BLOCK_HEADER, hash.as_bytes()).is_some()
+    fn block_exists(&'a self, hash: &packed::Byte32) -> bool {
+        self.get(COLUMN_BLOCK_HEADER, hash.as_slice()).is_some()
     }
 
     // Get cellbase by block hash
-    fn get_cellbase(&'a self, hash: &H256) -> Option<Transaction> {
-        self.get(COLUMN_BLOCK_BODY, hash.as_bytes())
+    fn get_cellbase(&'a self, hash: &packed::Byte32) -> Option<TransactionView> {
+        self.get(COLUMN_BLOCK_BODY, hash.as_slice())
             .and_then(|slice| {
-                protos::StoredBlockBody::from_slice(&slice.as_ref())
+                packed::BlockBodyViewReader::from_slice(&slice.as_ref())
+                    .should_be_ok()
                     .transaction(0)
-                    .expect("cellbase address should exist")
             })
     }
 
@@ -286,26 +318,27 @@ pub trait ChainStore<'a>: Send + Sync {
         &'a self,
         consensus: &Consensus,
         last_epoch: &EpochExt,
-        header: &Header,
+        header: &HeaderView,
     ) -> Option<EpochExt> {
         consensus.next_epoch_ext(
             last_epoch,
             header,
-            |hash| self.get_block_header(hash),
-            |hash| self.get_block_ext(hash).map(|ext| ext.total_uncles_count),
+            |hash| self.get_block_header(&hash),
+            |hash| self.get_block_ext(&hash).map(|ext| ext.total_uncles_count),
         )
     }
 
-    fn get_ancestor(&'a self, base: &H256, number: BlockNumber) -> Option<Header> {
+    fn get_ancestor(&'a self, base: &packed::Byte32, number: BlockNumber) -> Option<HeaderView> {
         if let Some(header) = self.get_block_header(base) {
-            let mut n_number = header.number();
+            let mut n_number: BlockNumber = header.data().raw().number().unpack();
             let mut index_walk = header;
             if number > n_number {
                 return None;
             }
 
             while n_number > number {
-                if let Some(header) = self.get_block_header(&index_walk.parent_hash()) {
+                if let Some(header) = self.get_block_header(&index_walk.data().raw().parent_hash())
+                {
                     index_walk = header;
                     n_number -= 1;
                 } else {

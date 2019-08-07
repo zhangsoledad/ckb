@@ -1,6 +1,9 @@
 use byteorder::{ByteOrder, LittleEndian};
-use ckb_core::transaction::Transaction;
-use ckb_core::{Bytes, Capacity};
+use ckb_types::{
+    bytes::Bytes,
+    core::{Capacity, TransactionView},
+    prelude::*,
+};
 use failure::{Error as FailureError, Fail};
 
 // This is multiplied by 10**16 to make sure we have enough precision.
@@ -20,23 +23,37 @@ pub enum Error {
     Format,
 }
 
-pub fn genesis_dao_data(genesis_cellbase_tx: &Transaction) -> Result<Bytes, FailureError> {
+pub fn genesis_dao_data(genesis_cellbase_tx: &TransactionView) -> Result<Bytes, FailureError> {
     let c = genesis_cellbase_tx
+        .data()
+        .slim()
+        .raw()
         .outputs()
-        .iter()
+        .into_iter()
         .try_fold(Capacity::zero(), |capacity, output| {
-            capacity.safe_add(output.capacity)
+            let cap: Capacity = output.capacity().unpack();
+            capacity.safe_add(cap)
         })?;
-    let u = genesis_cellbase_tx.outputs_with_data_iter().try_fold(
-        Capacity::zero(),
-        |capacity, (output, data)| {
+    let u = genesis_cellbase_tx
+        .data()
+        .slim()
+        .raw()
+        .outputs()
+        .into_iter()
+        .zip(
+            genesis_cellbase_tx
+                .data()
+                .outputs_data()
+                .into_iter()
+                .map(|d| d.raw_data()),
+        )
+        .try_fold(Capacity::zero(), |capacity, (output, data)| {
             Capacity::bytes(data.len()).and_then(|data_capacity| {
                 output
                     .occupied_capacity(data_capacity)
                     .and_then(|c| capacity.safe_add(c))
             })
-        },
-    )?;
+        })?;
     Ok(pack_dao_data(DEFAULT_ACCUMULATED_RATE, c, u))
 }
 

@@ -9,13 +9,11 @@ pub use db::ChainDB;
 pub use store::ChainStore;
 pub use transaction::StoreTransaction;
 
-use ckb_core::header::Header;
-use ckb_core::Bytes;
 use ckb_db::Col;
+use ckb_types::{bytes::Bytes, core::HeaderView, packed};
 use ckb_util::Mutex;
 use lazy_static::lazy_static;
 use lru_cache::LruCache;
-use numext_fixed_hash::H256;
 
 pub const COLUMNS: u32 = 12;
 pub const COLUMN_INDEX: Col = "0";
@@ -35,10 +33,11 @@ const META_TIP_HEADER_KEY: &[u8] = b"TIP_HEADER";
 const META_CURRENT_EPOCH_KEY: &[u8] = b"CURRENT_EPOCH";
 
 lazy_static! {
-    static ref HEADER_CACHE: Mutex<LruCache<H256, Header>> = { Mutex::new(LruCache::new(4096)) };
+    static ref HEADER_CACHE: Mutex<LruCache<packed::Byte32, HeaderView>> =
+        { Mutex::new(LruCache::new(4096)) };
 }
 
 lazy_static! {
-    static ref CELL_DATA_CACHE: Mutex<LruCache<(H256, u32), Bytes>> =
+    static ref CELL_DATA_CACHE: Mutex<LruCache<(packed::Byte32, u32), Bytes>> =
         { Mutex::new(LruCache::new(128)) };
 }

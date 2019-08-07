@@ -6,17 +6,23 @@ use crate::{
     },
     DataLoader, ScriptConfig, ScriptError,
 };
-use ckb_core::cell::{CellMeta, ResolvedOutPoint, ResolvedTransaction};
-use ckb_core::script::{Script, ScriptHashType};
-use ckb_core::transaction::{CellInput, CellOutPoint, Witness};
-use ckb_core::{Bytes, Cycle};
+use ckb_types::{
+    bytes::Bytes,
+    core::{
+        cell::{CellMeta, ResolvedOutPoint, ResolvedTransaction},
+        Cycle, ScriptHashType,
+    },
+    packed::{Byte32, CellInputVec, CellOutPoint, Script, WitnessVec},
+    prelude::*,
+    H256,
+};
+
 use ckb_logger::{debug, info};
 use ckb_vm::{
     DefaultCoreMachine, DefaultMachineBuilder, SparseMemory, SupportMachine, TraceMachine,
     WXorXMemory,
 };
 use fnv::FnvHashMap;
-use numext_fixed_hash::H256;
 
 #[cfg(all(unix, target_pointer_width = "64"))]
 use crate::Runner;
@@ -53,10 +59,10 @@ pub struct TransactionScriptsVerifier<'a, DL> {
     outputs: Vec<CellMeta>,
     rtx: &'a ResolvedTransaction<'a>,
 
-    binaries_by_data_hash: FnvHashMap<H256, Bytes>,
-    binaries_by_type_hash: FnvHashMap<H256, (Bytes, bool)>,
-    lock_groups: FnvHashMap<H256, ScriptGroup>,
-    type_groups: FnvHashMap<H256, ScriptGroup>,
+    binaries_by_data_hash: FnvHashMap<Byte32, Bytes>,
+    binaries_by_type_hash: FnvHashMap<Byte32, (Bytes, bool)>,
+    lock_groups: FnvHashMap<Byte32, ScriptGroup>,
+    type_groups: FnvHashMap<Byte32, ScriptGroup>,
 
     // On windows we won't need this config right now, but removing it
     // on windows alone is too much effort comparing to simply allowing
@@ -78,30 +84,33 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
             .transaction
             .outputs_with_data_iter()
             .enumerate()
-            .map(|(index, (output, data))| CellMeta {
-                cell_output: output.to_owned(),
-                out_point: CellOutPoint {
-                    tx_hash: tx_hash.to_owned(),
-                    index: index as u32,
-                },
-                block_info: None,
-                cellbase: false,
-                data_bytes: data.len() as u64,
-                mem_cell_data: Some(data.to_owned()),
+            .map(|(index, (cell_output, data))| {
+                let out_point = CellOutPoint::new_builder()
+                    .tx_hash(tx_hash.clone())
+                    .index(index.pack())
+                    .build();
+                CellMeta {
+                    cell_output,
+                    out_point,
+                    block_info: None,
+                    cellbase: false,
+                    data_bytes: data.len() as u64,
+                    mem_cell_data: Some(data),
+                }
             })
             .collect();
 
-        let mut binaries_by_data_hash: FnvHashMap<H256, Bytes> = FnvHashMap::default();
-        let mut binaries_by_type_hash: FnvHashMap<H256, (Bytes, bool)> = FnvHashMap::default();
+        let mut binaries_by_data_hash: FnvHashMap<Byte32, Bytes> = FnvHashMap::default();
+        let mut binaries_by_type_hash: FnvHashMap<Byte32, (Bytes, bool)> = FnvHashMap::default();
         for resolved_dep in resolved_deps {
             if let Some(cell_meta) = &resolved_dep.cell() {
                 let data = data_loader.load_cell_data(cell_meta).expect("cell data");
-                binaries_by_data_hash.insert(cell_meta.data_hash().to_owned(), data.to_owned());
-                if let Some(t) = &cell_meta.cell_output.type_ {
+                binaries_by_data_hash.insert(cell_meta.data_hash().pack(), data.clone());
+                if let Some(t) = &cell_meta.cell_output.type_().to_opt() {
                     binaries_by_type_hash
-                        .entry(t.hash())
+                        .entry(t.calc_hash().pack())
                         .and_modify(|e| e.1 = true)
-                        .or_insert((data.to_owned(), false));
+                        .or_insert((data.clone(), false));
                 }
             }
         }
@@ -114,21 +123,21 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
             if let Some(cell_meta) = resolved_input.cell() {
                 let output = &cell_meta.cell_output;
                 let lock_group_entry = lock_groups
-                    .entry(output.lock.hash())
-                    .or_insert_with(|| ScriptGroup::new(&output.lock));
+                    .entry(output.lock().calc_hash().pack())
+                    .or_insert_with(|| ScriptGroup::new(&output.lock()));
                 lock_group_entry.input_indices.push(i);
-                if let Some(t) = &output.type_ {
+                if let Some(t) = output.type_().to_opt() {
                     let type_group_entry = type_groups
-                        .entry(t.hash())
+                        .entry(t.calc_hash().pack())
                         .or_insert_with(|| ScriptGroup::new(&t));
                     type_group_entry.input_indices.push(i);
                 }
             }
         }
-        for (i, output) in rtx.transaction.outputs().iter().enumerate() {
-            if let Some(t) = &output.type_ {
+        for (i, output) in rtx.transaction.outputs().into_iter().enumerate() {
+            if let Some(t) = output.type_().to_opt() {
                 let type_group_entry = type_groups
-                    .entry(t.hash())
+                    .entry(t.calc_hash().pack())
                     .or_insert_with(|| ScriptGroup::new(&t));
                 type_group_entry.output_indices.push(i);
             }
@@ -152,7 +161,7 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
     }
 
     #[inline]
-    fn inputs(&self) -> &[CellInput] {
+    fn inputs(&self) -> CellInputVec {
         self.rtx.transaction.inputs()
     }
 
@@ -167,17 +176,17 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
     }
 
     #[inline]
-    fn witnesses(&self) -> &[Witness] {
+    fn witnesses(&self) -> WitnessVec {
         self.rtx.transaction.witnesses()
     }
 
     #[inline]
-    fn hash(&self) -> &H256 {
+    fn hash(&self) -> Byte32 {
         self.rtx.transaction.hash()
     }
 
     fn build_load_tx_hash(&self) -> LoadTxHash {
-        LoadTxHash::new(self.hash().as_bytes())
+        LoadTxHash::new(self.hash())
     }
 
     fn build_load_cell(
@@ -222,21 +231,22 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
     }
 
     fn build_load_witness(&'a self, group_inputs: &'a [usize]) -> LoadWitness<'a> {
-        LoadWitness::new(&self.witnesses(), group_inputs)
+        LoadWitness::new(self.witnesses(), group_inputs)
     }
 
     // Extracts actual script binary either in dep cells.
     fn extract_script(&self, script: &'a Script) -> Result<Bytes, ScriptError> {
-        match script.hash_type {
+        match script.hash_type().unpack() {
             ScriptHashType::Data => {
-                if let Some(data) = self.binaries_by_data_hash.get(&script.code_hash) {
+                if let Some(data) = self.binaries_by_data_hash.get(&script.code_hash()) {
                     Ok(data.to_owned())
                 } else {
                     Err(ScriptError::InvalidCodeHash)
                 }
             }
             ScriptHashType::Type => {
-                if let Some((data, multiple)) = self.binaries_by_type_hash.get(&script.code_hash) {
+                if let Some((data, multiple)) = self.binaries_by_type_hash.get(&script.code_hash())
+                {
                     if *multiple {
                         Err(ScriptError::MultipleMatches)
                     } else {
@@ -265,8 +275,8 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
             let program = self.extract_script(&group.script)?;
             let cycle = self.run(&program, &group, max_cycles).map_err(|e| {
                 info!(
-                    "Error validating script group {:x} of transaction {:x}: {:?}",
-                    group.script.hash(),
+                    "Error validating script group {:x} of transaction {}: {:?}",
+                    group.script.calc_hash(),
                     self.hash(),
                     e
                 );
@@ -290,7 +300,7 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
         script_group: &ScriptGroup,
         max_cycles: Cycle,
     ) -> Result<Cycle, ScriptError> {
-        let current_script_hash = script_group.script.hash();
+        let current_script_hash = script_group.script.calc_hash();
         let prefix = format!("script group: {:x}", current_script_hash);
         let debug_printer = |message: &str| {
             if let Some(ref printer) = self.debug_printer {
@@ -301,7 +311,13 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
         };
         let current_script_hash_bytes = current_script_hash.as_bytes();
         let mut args = vec!["verify".into()];
-        args.extend_from_slice(&script_group.script.args);
+        args.extend(
+            script_group
+                .script
+                .args()
+                .into_iter()
+                .map(|arg| arg.raw_data()),
+        );
         let (code, cycles) = match self.config.runner {
             Runner::Assembly => {
                 let core_machine = AsmCoreMachine::new_with_max_cycles(max_cycles);
@@ -439,6 +455,7 @@ impl<'a, DL: DataLoader> TransactionScriptsVerifier<'a, DL> {
     }
 }
 
+/* TODO apply-serialization fix tests
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1251,3 +1268,4 @@ mod tests {
         assert_eq!(verifier.verify(100_000_000), Ok(2_818_104));
     }
 }
+*/

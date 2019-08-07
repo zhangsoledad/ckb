@@ -2,14 +2,14 @@ use crate::syscalls::{
     utils::store_data, Source, SourceEntry, INDEX_OUT_OF_BOUND, ITEM_MISSING,
     LOAD_HEADER_SYSCALL_NUMBER, SUCCESS,
 };
-use ckb_core::cell::ResolvedOutPoint;
-use ckb_core::header::Header;
-use ckb_protocol::Header as FbsHeader;
+use ckb_types::{
+    core::{cell::ResolvedOutPoint, HeaderView},
+    prelude::*,
+};
 use ckb_vm::{
     registers::{A0, A3, A4, A7},
     Error as VMError, Register, SupportMachine, Syscalls,
 };
-use flatbuffers::FlatBufferBuilder;
 
 #[derive(Debug)]
 pub struct LoadHeader<'a> {
@@ -31,7 +31,7 @@ impl<'a> LoadHeader<'a> {
         }
     }
 
-    fn fetch_header(&self, source: Source, index: usize) -> Result<&Header, u8> {
+    fn fetch_header(&self, source: Source, index: usize) -> Result<&HeaderView, u8> {
         match source {
             Source::Transaction(SourceEntry::Input) => self
                 .resolved_inputs
@@ -78,16 +78,11 @@ impl<'a, Mac: SupportMachine> Syscalls<Mac> for LoadHeader<'a> {
             machine.set_register(A0, Mac::REG::from_u8(header.unwrap_err()));
             return Ok(true);
         }
-        let header = header.unwrap();
+        let header = header.unwrap().data();
 
-        let mut builder = FlatBufferBuilder::new();
-        let offset = FbsHeader::build(&mut builder, header);
-        builder.finish(offset, None);
-        let data = builder.finished_data();
-
-        store_data(machine, &data)?;
+        store_data(machine, &header.as_slice())?;
         machine.set_register(A0, Mac::REG::from_u8(SUCCESS));
-        machine.add_cycles(data.len() as u64 * 10)?;
+        machine.add_cycles(header.as_slice().len() as u64 * 10)?;
         Ok(true)
     }
 }

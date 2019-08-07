@@ -1,17 +1,19 @@
 use crate::error::RPCError;
-use ckb_core::cell::{resolve_transaction, CellProvider, CellStatus, HeaderProvider, HeaderStatus};
-use ckb_core::script::Script as CoreScript;
-use ckb_core::transaction::{OutPoint as CoreOutPoint, Transaction as CoreTransaction};
 use ckb_dao::DaoCalculator;
 use ckb_jsonrpc_types::{Capacity, Cycle, DryRunResult, OutPoint, Script, Transaction};
 use ckb_logger::error;
 use ckb_shared::chain_state::ChainState;
 use ckb_shared::shared::Shared;
 use ckb_store::ChainStore;
+use ckb_types::{
+    core::cell::{resolve_transaction, CellProvider, CellStatus, HeaderProvider, HeaderStatus},
+    packed,
+    prelude::*,
+    H256,
+};
 use ckb_verification::ScriptVerifier;
 use jsonrpc_core::{Error, Result};
 use jsonrpc_derive::rpc;
-use numext_fixed_hash::H256;
 
 #[rpc]
 pub trait ExperimentRpc {
@@ -37,17 +39,17 @@ pub(crate) struct ExperimentRpcImpl {
 
 impl ExperimentRpc for ExperimentRpcImpl {
     fn compute_transaction_hash(&self, tx: Transaction) -> Result<H256> {
-        let tx: CoreTransaction = tx.into();
-        Ok(tx.hash().to_owned())
+        let tx: packed::Transaction = tx.into();
+        Ok(tx.calc_tx_hash())
     }
 
     fn compute_script_hash(&self, script: Script) -> Result<H256> {
-        let script: CoreScript = script.into();
-        Ok(script.hash())
+        let script: packed::Script = script.into();
+        Ok(script.calc_hash())
     }
 
     fn dry_run_transaction(&self, tx: Transaction) -> Result<DryRunResult> {
-        let tx: CoreTransaction = tx.into();
+        let tx: packed::Transaction = tx.into();
         let chain_state = self.shared.lock_chain_state();
         DryRunner::new(&chain_state).run(tx)
     }
@@ -56,7 +58,7 @@ impl ExperimentRpc for ExperimentRpcImpl {
         let chain_state = self.shared.lock_chain_state();
         let consensus = &chain_state.consensus();
         let calculator = DaoCalculator::new(consensus, chain_state.store());
-        match calculator.maximum_withdraw(&out_point.into(), &hash) {
+        match calculator.maximum_withdraw(&out_point.into(), &hash.pack()) {
             Ok(capacity) => Ok(Capacity(capacity)),
             Err(err) => {
                 error!("calculate_dao_maximum_withdraw error {:?}", err);
@@ -72,26 +74,26 @@ pub(crate) struct DryRunner<'a> {
 }
 
 impl<'a> CellProvider for DryRunner<'a> {
-    fn cell(&self, o: &CoreOutPoint) -> CellStatus {
-        if o.cell.is_none() {
+    fn cell(&self, o: &packed::OutPoint) -> CellStatus {
+        if o.cell().is_none() {
             return CellStatus::Unspecified;
         }
-        let co = o.cell.as_ref().expect("checked below");
+        let co = o.cell().to_opt().expect("checked below");
         self
             .chain_state
             .store()
-            .get_cell_meta(&co.tx_hash, co.index)
+            .get_cell_meta(&co.tx_hash(), co.index().unpack())
             .map(CellStatus::live_cell)  // treat as live cell, regardless of live or dead
             .unwrap_or(CellStatus::Unknown)
     }
 }
 
 impl<'a> HeaderProvider for DryRunner<'a> {
-    fn header(&self, o: &CoreOutPoint) -> HeaderStatus {
-        if o.block_hash.is_none() {
+    fn header(&self, o: &packed::OutPoint) -> HeaderStatus {
+        if o.block_hash().is_none() {
             return HeaderStatus::Unspecified;
         }
-        let block_hash = o.block_hash.as_ref().expect("checked below");
+        let block_hash = o.block_hash().to_opt().expect("checked below");
         self.chain_state
             .store()
             .get_block_header(&block_hash)
@@ -105,8 +107,8 @@ impl<'a> DryRunner<'a> {
         Self { chain_state }
     }
 
-    pub(crate) fn run(&self, tx: CoreTransaction) -> Result<DryRunResult> {
-        match resolve_transaction(&tx, &mut Default::default(), self, self) {
+    pub(crate) fn run(&self, tx: packed::Transaction) -> Result<DryRunResult> {
+        match resolve_transaction(&tx.to_view(), &mut Default::default(), self, self) {
             Ok(resolved) => {
                 let consensus = self.chain_state.consensus();
                 let max_cycles = consensus.max_block_cycles;
