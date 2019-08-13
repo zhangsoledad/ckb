@@ -5,9 +5,8 @@ mod header_verifier;
 mod transaction_verifier;
 mod uncles_verifier;
 
-// TODO apply-serialization fix tests
-// test#[cfg(test)]
-// testmod tests;
+#[cfg(test)]
+mod tests;
 
 pub use crate::block_verifier::{BlockVerifier, HeaderResolverWrapper};
 pub use crate::contextual_block_verifier::{ContextualBlockVerifier, VerifyContext};

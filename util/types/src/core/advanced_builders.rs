@@ -419,14 +419,7 @@ impl packed::Transaction {
 
 impl core::TransactionView {
     pub fn as_advanced_builder(&self) -> TransactionBuilder {
-        let core::TransactionView {
-            data,
-            hash,
-            witness_hash,
-        } = self;
-        data.as_advanced_builder()
-            .fake_hash(hash.clone())
-            .fake_witness_hash(witness_hash.clone())
+        self.data().as_advanced_builder()
     }
 }
 
@@ -452,8 +445,7 @@ impl packed::Header {
 
 impl core::HeaderView {
     pub fn as_advanced_builder(&self) -> HeaderBuilder {
-        let core::HeaderView { data, hash } = self;
-        data.as_advanced_builder().fake_hash(hash.clone())
+        self.data().as_advanced_builder()
     }
 }
 
@@ -481,17 +473,14 @@ impl core::BlockView {
     pub fn as_advanced_builder(&self) -> BlockBuilder {
         let core::BlockView {
             data,
-            hash,
             uncle_hashes,
             tx_hashes,
             tx_witness_hashes,
+            hash: _,
         } = self;
-        let header = core::HeaderView {
-            data: data.header(),
-            hash: hash.clone(),
-        };
         BlockBuilder::new()
-            .header(header)
+            .header(self.header())
+            .clear_caches()
             .uncles(
                 data.uncles()
                     .into_iter()
