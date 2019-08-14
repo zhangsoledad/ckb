@@ -1,17 +1,17 @@
 use crate::SyncSharedState;
 use ckb_chain::chain::{ChainController, ChainService};
-use ckb_core::block::BlockBuilder;
-use ckb_core::cell::resolve_transaction;
-use ckb_core::header::HeaderBuilder;
-use ckb_core::transaction::Transaction;
-use ckb_core::BlockNumber;
+
 use ckb_dao::DaoCalculator;
 use ckb_notify::NotifyService;
 use ckb_shared::shared::{Shared, SharedBuilder};
 use ckb_store::ChainStore;
 use ckb_test_chain_utils::{always_success_cellbase, always_success_consensus};
 use ckb_traits::ChainProvider;
-use numext_fixed_hash::H256;
+use ckb_types::prelude::*;
+use ckb_types::{
+    core::{cell::resolve_transaction, BlockBuilder, BlockNumber, TransactionView},
+    packed::Byte32,
+};
 use std::sync::Arc;
 
 pub fn build_chain(tip: BlockNumber) -> (SyncSharedState, ChainController) {
@@ -45,15 +45,15 @@ pub fn generate_blocks(
     }
 }
 
-pub fn inherit_block(shared: &Shared, parent_hash: &H256) -> BlockBuilder {
+pub fn inherit_block(shared: &Shared, parent_hash: &Byte32) -> BlockBuilder {
     let parent = shared.store().get_block(parent_hash).unwrap();
-    let parent_epoch = shared.get_block_epoch(parent_hash).unwrap();
+    let parent_epoch = shared.store().get_block_epoch(parent_hash).unwrap();
     let parent_number = parent.header().number();
     let epoch = shared
-        .next_epoch_ext(&parent_epoch, parent.header())
+        .next_epoch_ext(&parent_epoch, &parent.header())
         .unwrap_or(parent_epoch);
     let cellbase = {
-        let (_, reward) = shared.finalize_block_reward(parent.header()).unwrap();
+        let (_, reward) = shared.finalize_block_reward(&parent.header()).unwrap();
         always_success_cellbase(parent_number + 1, reward.total)
     };
     let dao = {
@@ -66,23 +66,21 @@ pub fn inherit_block(shared: &Shared, parent_hash: &H256) -> BlockBuilder {
         )
         .unwrap();
         DaoCalculator::new(shared.consensus(), shared.store())
-            .dao_field(&[resolved_cellbase], parent.header())
+            .dao_field(&[resolved_cellbase], &parent.header())
             .unwrap()
     };
 
-    BlockBuilder::from_header_builder(
-        HeaderBuilder::default()
-            .parent_hash(parent_hash.to_owned())
-            .number(parent.header().number() + 1)
-            .timestamp(parent.header().timestamp() + 1)
-            .epoch(epoch.number())
-            .difficulty(epoch.difficulty().to_owned())
-            .dao(dao),
-    )
-    .transaction(inherit_cellbase(shared, parent_number))
+    BlockBuilder::new()
+        .parent_hash(parent_hash.to_owned())
+        .number((parent.header().number() + 1).pack())
+        .timestamp((parent.header().timestamp() + 1).pack())
+        .epoch(epoch.number().pack())
+        .difficulty(epoch.difficulty().pack())
+        .dao(dao.pack())
+        .transaction(inherit_cellbase(shared, parent_number))
 }
 
-pub fn inherit_cellbase(shared: &Shared, parent_number: BlockNumber) -> Transaction {
+pub fn inherit_cellbase(shared: &Shared, parent_number: BlockNumber) -> TransactionView {
     let parent_header = {
         let chain = shared.lock_chain_state();
         let parent_hash = chain

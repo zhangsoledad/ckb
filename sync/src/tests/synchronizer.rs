@@ -6,22 +6,22 @@ use crate::tests::TestNode;
 use crate::{NetworkProtocol, SyncSharedState, Synchronizer};
 use ckb_chain::chain::ChainService;
 use ckb_chain_spec::consensus::Consensus;
-use ckb_core::block::BlockBuilder;
-use ckb_core::cell::resolve_transaction;
-use ckb_core::header::HeaderBuilder;
-use ckb_core::transaction::{CellInput, CellOutputBuilder, OutPoint, TransactionBuilder};
-use ckb_core::Bytes;
 use ckb_dao::DaoCalculator;
 use ckb_dao_utils::genesis_dao_data;
 use ckb_notify::NotifyService;
-use ckb_protocol::SyncMessage;
 use ckb_shared::shared::{Shared, SharedBuilder};
+use ckb_store::ChainStore;
 use ckb_test_chain_utils::always_success_cell;
 use ckb_traits::ChainProvider;
+use ckb_types::prelude::*;
+use ckb_types::{
+    bytes::Bytes,
+    core::{cell::resolve_transaction, BlockBuilder, TransactionBuilder},
+    packed::{self, CellInput, CellOutputBuilder, OutPoint},
+    U256,
+};
 use ckb_util::RwLock;
 use faketime::{self, unix_time_as_millis};
-use flatbuffers::get_root;
-use numext_fixed_uint::U256;
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::thread;
@@ -44,11 +44,16 @@ fn basic_sync() {
         .name(thread_name.clone())
         .spawn(move || {
             node1.start(&signal_tx1, |data| {
-                let msg = get_root::<SyncMessage>(data);
+                let msg = packed::SyncMessage::from_slice(&data)
+                    .expect("sync message")
+                    .to_enum();
                 // terminate thread after 3 blocks
-                msg.payload_as_block()
-                    .map(|block| block.header().unwrap().number() == 3)
-                    .unwrap_or(false)
+                if let packed::SyncMessageUnionReader::SendBlock(reader) = msg.as_reader() {
+                    let block = reader.block().to_entity().to_view();
+                    block.header().number() == 3
+                } else {
+                    false
+                }
             });
         })
         .expect("thread spawn");
@@ -74,22 +79,19 @@ fn basic_sync() {
 fn setup_node(thread_name: &str, height: u64) -> (TestNode, Shared) {
     let (always_success_cell, always_success_cell_data, always_success_script) =
         always_success_cell();
-    let always_success_tx = TransactionBuilder::default()
+    let always_success_tx = TransactionBuilder::new()
         .witness(always_success_script.clone().into_witness())
         .input(CellInput::new(OutPoint::null(), 0))
         .output(always_success_cell.clone())
-        .output_data(always_success_cell_data.clone())
+        .output_data(always_success_cell_data.pack())
         .build();
 
     let dao = genesis_dao_data(&always_success_tx).unwrap();
 
-    let mut block = BlockBuilder::default()
-        .header_builder(
-            HeaderBuilder::default()
-                .timestamp(unix_time_as_millis())
-                .difficulty(U256::from(1000u64))
-                .dao(dao),
-        )
+    let mut block = BlockBuilder::new()
+        .timestamp(unix_time_as_millis().pack())
+        .difficulty(U256::from(1000u64).pack())
+        .dao(dao.pack())
         .transaction(always_success_tx)
         .build();
 
@@ -109,22 +111,25 @@ fn setup_node(thread_name: &str, height: u64) -> (TestNode, Shared) {
         let number = block.header().number() + 1;
         let timestamp = block.header().timestamp() + 1;
 
-        let last_epoch = shared.get_block_epoch(&block.header().hash()).unwrap();
+        let last_epoch = shared
+            .store()
+            .get_block_epoch(&block.header().hash())
+            .unwrap();
         let epoch = shared
-            .next_epoch_ext(&last_epoch, block.header())
+            .next_epoch_ext(&last_epoch, &block.header())
             .unwrap_or(last_epoch);
 
-        let (_, reward) = shared.finalize_block_reward(block.header()).unwrap();
+        let (_, reward) = shared.finalize_block_reward(&block.header()).unwrap();
 
-        let cellbase = TransactionBuilder::default()
+        let cellbase = TransactionBuilder::new()
             .input(CellInput::new_cellbase_input(number))
             .output(
                 CellOutputBuilder::default()
-                    .capacity(reward.total)
+                    .capacity(reward.total.pack())
                     .lock(always_success_script.to_owned())
                     .build(),
             )
-            .output_data(Bytes::default())
+            .output_data(Bytes::default().pack())
             .witness(always_success_script.to_owned().into_witness())
             .build();
 
@@ -138,21 +143,18 @@ fn setup_node(thread_name: &str, height: u64) -> (TestNode, Shared) {
             )
             .unwrap();
             DaoCalculator::new(shared.consensus(), shared.store())
-                .dao_field(&[resolved_cellbase], block.header())
+                .dao_field(&[resolved_cellbase], &block.header())
                 .unwrap()
         };
 
-        let header_builder = HeaderBuilder::default()
-            .parent_hash(block.header().hash().to_owned())
-            .number(number)
-            .epoch(epoch.number())
-            .timestamp(timestamp)
-            .difficulty(epoch.difficulty().clone())
-            .dao(dao);
-
-        block = BlockBuilder::default()
+        block = BlockBuilder::new()
             .transaction(cellbase)
-            .header_builder(header_builder)
+            .parent_hash(block.header().hash().to_owned())
+            .number(number.pack())
+            .epoch(epoch.number().pack())
+            .timestamp(timestamp.pack())
+            .difficulty(epoch.difficulty().pack())
+            .dao(dao.pack())
             .build();
 
         chain_controller
