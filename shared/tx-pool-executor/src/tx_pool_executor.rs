@@ -178,24 +178,26 @@ impl TxPoolExecutor {
     }
 }
 
-/* TODO apply-serialization fix tests
 #[cfg(test)]
 mod tests {
     use super::*;
     use ckb_chain::chain::ChainService;
     use ckb_chain_spec::consensus::Consensus;
-    use ckb_core::block::BlockBuilder;
-    use ckb_core::cell::UnresolvableError;
-    use ckb_core::header::HeaderBuilder;
-    use ckb_core::transaction::{CellInput, CellOutputBuilder, OutPoint, TransactionBuilder};
-    use ckb_core::{capacity_bytes, Bytes, Capacity};
     use ckb_notify::NotifyService;
     use ckb_shared::shared::{Shared, SharedBuilder};
     use ckb_test_chain_utils::always_success_cell;
     use ckb_traits::ChainProvider;
+    use ckb_types::{
+        bytes::Bytes,
+        core::{
+            capacity_bytes, cell::UnresolvableError, BlockBuilder, Capacity, TransactionBuilder,
+        },
+        packed::{CellInput, CellOutput, OutPoint},
+        prelude::*,
+        U256,
+    };
     use ckb_verification::TransactionError;
     use faketime::{self, unix_time_as_millis};
-    use numext_fixed_uint::U256;
     use std::sync::Arc;
 
     fn setup(height: u64) -> (Shared, OutPoint) {
@@ -205,16 +207,13 @@ mod tests {
             .witness(always_success_script.clone().into_witness())
             .input(CellInput::new(OutPoint::null(), 0))
             .output(always_success_cell.clone())
-            .output_data(always_success_cell_data.clone())
+            .output_data(always_success_cell_data.pack())
             .build();
-        let always_success_out_point = OutPoint::new_cell(always_success_tx.hash().to_owned(), 0);
+        let always_success_out_point = OutPoint::new_cell(always_success_tx.hash().unpack(), 0);
 
         let mut block = BlockBuilder::default()
-            .header_builder(
-                HeaderBuilder::default()
-                    .timestamp(unix_time_as_millis())
-                    .difficulty(U256::from(1000u64)),
-            )
+            .timestamp(unix_time_as_millis().pack())
+            .difficulty(U256::from(1000u64).pack())
             .transaction(always_success_tx)
             .build();
         let consensus = Consensus::default()
@@ -235,20 +234,20 @@ mod tests {
             let number = block.header().number() + 1;
             let timestamp = block.header().timestamp() + 1;
 
-            let last_epoch = shared.get_block_epoch(&block.header().hash()).unwrap();
+            let last_epoch = shared.get_block_epoch(&block.hash().unpack()).unwrap();
             let epoch = shared
-                .next_epoch_ext(&last_epoch, block.header())
+                .next_epoch_ext(&last_epoch, &block.header())
                 .unwrap_or(last_epoch);
 
             let outputs = (0..20)
                 .map(|_| {
-                    CellOutputBuilder::default()
-                        .capacity(capacity_bytes!(50))
-                        .lock(always_success_script.to_owned())
+                    CellOutput::new_builder()
+                        .capacity(capacity_bytes!(50).pack())
+                        .lock(always_success_script.clone())
                         .build()
                 })
                 .collect::<Vec<_>>();
-            let outputs_data = (0..20).map(|_| Bytes::new());
+            let outputs_data = (0..20).map(|_| Bytes::new().pack());
             let cellbase = TransactionBuilder::default()
                 .input(CellInput::new_cellbase_input(number))
                 .outputs(outputs)
@@ -258,31 +257,28 @@ mod tests {
             let txs = (10..20).map(|i| {
                 TransactionBuilder::default()
                     .input(CellInput::new(
-                        OutPoint::new_cell(cellbase.hash().to_owned(), i),
+                        OutPoint::new_cell(cellbase.hash().unpack(), i),
                         0,
                     ))
                     .output(
-                        CellOutputBuilder::default()
-                            .capacity(capacity_bytes!(50))
-                            .lock(always_success_script.to_owned())
+                        CellOutput::new_builder()
+                            .capacity(capacity_bytes!(50).pack())
+                            .lock(always_success_script.clone())
                             .build(),
                     )
-                    .output_data(Bytes::new())
+                    .output_data(Default::default())
                     .dep(always_success_out_point.to_owned())
                     .build()
             });
 
-            let header_builder = HeaderBuilder::default()
-                .parent_hash(block.header().hash().to_owned())
-                .number(number)
-                .epoch(epoch.number())
-                .timestamp(timestamp)
-                .difficulty(epoch.difficulty().clone());
-
             block = BlockBuilder::default()
+                .parent_hash(block.header().hash().to_owned())
+                .number(number.pack())
+                .epoch(epoch.number().pack())
+                .timestamp(timestamp.pack())
+                .difficulty(epoch.difficulty().pack())
                 .transaction(cellbase.clone())
                 .transactions(txs)
-                .header_builder(header_builder)
                 .build();
 
             chain_controller
@@ -300,7 +296,7 @@ mod tests {
             .store()
             .get_block(&shared.lock_chain_state().tip_hash())
             .unwrap();
-        let last_cellbase = last_block.transactions().first().unwrap();
+        let last_cellbase = last_block.transactions().first().cloned().unwrap();
 
         // building 10 txs and broadcast some
         let txs = (0..20u8)
@@ -308,15 +304,16 @@ mod tests {
                 let data = Bytes::from(vec![i]);
                 TransactionBuilder::default()
                     .input(CellInput::new(
-                        OutPoint::new_cell(last_cellbase.hash().to_owned(), u32::from(i)),
+                        OutPoint::new_cell(last_cellbase.hash().unpack(), u32::from(i)),
                         0,
                     ))
                     .output(
-                        CellOutputBuilder::from_data(&data)
-                            .capacity(capacity_bytes!(50))
+                        CellOutput::new_builder()
+                            .data_hash(CellOutput::calc_data_hash(&data).pack())
+                            .capacity(capacity_bytes!(50).pack())
                             .build(),
                     )
-                    .output_data(data)
+                    .output_data(data.pack())
                     .dep(always_success_out_point.to_owned())
                     .build()
             })
@@ -334,7 +331,7 @@ mod tests {
         assert_eq!(
             result,
             Err(PoolError::UnresolvableTransaction(UnresolvableError::Dead(
-                txs[10].inputs()[0].previous_output.to_owned()
+                txs[10].inputs().get(0).unwrap().previous_output()
             )))
         );
         // spent half available half conflict cells
@@ -342,7 +339,7 @@ mod tests {
         assert_eq!(
             result,
             Err(PoolError::UnresolvableTransaction(UnresolvableError::Dead(
-                txs[10].inputs()[0].previous_output.to_owned()
+                txs[10].inputs().get(0).unwrap().previous_output()
             )))
         );
         // spent one cell
@@ -355,7 +352,7 @@ mod tests {
         assert_eq!(
             result,
             Err(PoolError::UnresolvableTransaction(UnresolvableError::Dead(
-                txs[13].inputs()[0].previous_output.to_owned()
+                txs[13].inputs().get(0).unwrap().previous_output()
             )))
         );
     }
@@ -367,23 +364,23 @@ mod tests {
             .store()
             .get_block(&shared.lock_chain_state().tip_hash())
             .unwrap();
-        let last_cellbase = last_block.transactions().first().unwrap();
+        let last_cellbase = last_block.transactions().first().cloned().unwrap();
         let tip_number = shared.lock_chain_state().tip_number();
 
-        let transactions: Vec<Transaction> = (tip_number - 1..=tip_number + 2)
+        let transactions: Vec<TransactionView> = (tip_number - 1..=tip_number + 2)
             .map(|number| {
                 let since = number;
                 TransactionBuilder::default()
                     .input(CellInput::new(
-                        OutPoint::new_cell(last_cellbase.hash().to_owned(), 0),
+                        OutPoint::new_cell(last_cellbase.hash().unpack(), 0),
                         since,
                     ))
                     .output(
-                        CellOutputBuilder::default()
-                            .capacity(capacity_bytes!(50))
+                        CellOutput::new_builder()
+                            .capacity(capacity_bytes!(50).pack())
                             .build(),
                     )
-                    .output_data(Bytes::new())
+                    .output_data(Default::default())
                     .dep(always_success_out_point.to_owned())
                     .build()
             })
@@ -409,4 +406,3 @@ mod tests {
         );
     }
 }
-*/

@@ -189,7 +189,6 @@ impl Worker for CuckooSimple {
     }
 }
 
-/* TODO apply-serialization fix tests
 #[cfg(test)]
 mod test {
     use super::*;
@@ -205,8 +204,8 @@ mod test {
         worker.solve(pow_hash, nonce);
         let engine = CuckooEngine { cuckoo };
         while let Ok((pow_hash, seal)) = seal_rx.try_recv() {
-            let (nonce, proof) = seal.destruct();
-            let message = pow_message(&pow_hash, nonce);
+            let proof: Vec<u8> = seal.proof().unpack();
+            let message = pow_message(&pow_hash, seal.nonce().unpack());
             prop_assert!(engine.verify(0, &message, &proof));
         }
 
@@ -220,4 +219,3 @@ mod test {
         }
     }
 }
-*/

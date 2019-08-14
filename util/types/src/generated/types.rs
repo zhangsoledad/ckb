@@ -1745,7 +1745,12 @@ impl ::std::iter::Iterator for BytesIterator {
         }
     }
 }
-impl IntoIterator for Bytes {
+impl ::std::iter::ExactSizeIterator for BytesIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for Bytes {
     type Item = u8;
     type IntoIter = BytesIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -1963,7 +1968,12 @@ impl ::std::iter::Iterator for Uint32VecIterator {
         }
     }
 }
-impl IntoIterator for Uint32Vec {
+impl ::std::iter::ExactSizeIterator for Uint32VecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for Uint32Vec {
     type Item = Uint32;
     type IntoIter = Uint32VecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -1987,6 +1997,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for Uint32VecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for Uint32VecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -2199,7 +2214,12 @@ impl ::std::iter::Iterator for Uint64VecIterator {
         }
     }
 }
-impl IntoIterator for Uint64Vec {
+impl ::std::iter::ExactSizeIterator for Uint64VecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for Uint64Vec {
     type Item = Uint64;
     type IntoIter = Uint64VecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -2223,6 +2243,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for Uint64VecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for Uint64VecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -2509,7 +2534,12 @@ impl ::std::iter::Iterator for BytesVecIterator {
         }
     }
 }
-impl IntoIterator for BytesVec {
+impl ::std::iter::ExactSizeIterator for BytesVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for BytesVec {
     type Item = Bytes;
     type IntoIter = BytesVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -2533,6 +2563,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for BytesVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for BytesVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -2745,7 +2780,12 @@ impl ::std::iter::Iterator for Byte32VecIterator {
         }
     }
 }
-impl IntoIterator for Byte32Vec {
+impl ::std::iter::ExactSizeIterator for Byte32VecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for Byte32Vec {
     type Item = Byte32;
     type IntoIter = Byte32VecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -2769,6 +2809,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for Byte32VecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for Byte32VecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -3937,7 +3982,12 @@ impl ::std::iter::Iterator for HeaderVecIterator {
         }
     }
 }
-impl IntoIterator for HeaderVec {
+impl ::std::iter::ExactSizeIterator for HeaderVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for HeaderVec {
     type Item = Header;
     type IntoIter = HeaderVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -3961,6 +4011,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for HeaderVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for HeaderVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -4247,7 +4302,12 @@ impl ::std::iter::Iterator for UncleBlockVecIterator {
         }
     }
 }
-impl IntoIterator for UncleBlockVec {
+impl ::std::iter::ExactSizeIterator for UncleBlockVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for UncleBlockVec {
     type Item = UncleBlock;
     type IntoIter = UncleBlockVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -4271,6 +4331,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for UncleBlockVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for UncleBlockVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -4557,7 +4622,12 @@ impl ::std::iter::Iterator for TransactionVecIterator {
         }
     }
 }
-impl IntoIterator for TransactionVec {
+impl ::std::iter::ExactSizeIterator for TransactionVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for TransactionVec {
     type Item = Transaction;
     type IntoIter = TransactionVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -4581,6 +4651,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for TransactionVecReaderIterator<'t, 'r> 
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for TransactionVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -4793,7 +4868,12 @@ impl ::std::iter::Iterator for ProposalShortIdVecIterator {
         }
     }
 }
-impl IntoIterator for ProposalShortIdVec {
+impl ::std::iter::ExactSizeIterator for ProposalShortIdVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for ProposalShortIdVec {
     type Item = ProposalShortId;
     type IntoIter = ProposalShortIdVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -4817,6 +4897,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for ProposalShortIdVecReaderIterator<'t, 
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for ProposalShortIdVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -5103,7 +5188,12 @@ impl ::std::iter::Iterator for OutPointVecIterator {
         }
     }
 }
-impl IntoIterator for OutPointVec {
+impl ::std::iter::ExactSizeIterator for OutPointVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for OutPointVec {
     type Item = OutPoint;
     type IntoIter = OutPointVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -5127,6 +5217,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for OutPointVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for OutPointVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -5413,7 +5508,12 @@ impl ::std::iter::Iterator for CellInputVecIterator {
         }
     }
 }
-impl IntoIterator for CellInputVec {
+impl ::std::iter::ExactSizeIterator for CellInputVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for CellInputVec {
     type Item = CellInput;
     type IntoIter = CellInputVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -5437,6 +5537,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for CellInputVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for CellInputVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -5723,7 +5828,12 @@ impl ::std::iter::Iterator for CellOutputVecIterator {
         }
     }
 }
-impl IntoIterator for CellOutputVec {
+impl ::std::iter::ExactSizeIterator for CellOutputVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for CellOutputVec {
     type Item = CellOutput;
     type IntoIter = CellOutputVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -5747,6 +5857,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for CellOutputVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for CellOutputVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -6033,7 +6148,12 @@ impl ::std::iter::Iterator for WitnessVecIterator {
         }
     }
 }
-impl IntoIterator for WitnessVec {
+impl ::std::iter::ExactSizeIterator for WitnessVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for WitnessVec {
     type Item = Witness;
     type IntoIter = WitnessVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -6057,6 +6177,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for WitnessVecReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for WitnessVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -7595,7 +7720,12 @@ impl ::std::iter::Iterator for WitnessIterator {
         }
     }
 }
-impl IntoIterator for Witness {
+impl ::std::iter::ExactSizeIterator for WitnessIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for Witness {
     type Item = Bytes;
     type IntoIter = WitnessIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -7619,6 +7749,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for WitnessReaderIterator<'t, 'r> {
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for WitnessReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -14454,7 +14589,12 @@ impl ::std::iter::Iterator for RelayTransactionVecIterator {
         }
     }
 }
-impl IntoIterator for RelayTransactionVec {
+impl ::std::iter::ExactSizeIterator for RelayTransactionVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for RelayTransactionVec {
     type Item = RelayTransaction;
     type IntoIter = RelayTransactionVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -14482,6 +14622,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for RelayTransactionVecReaderIterator<'t,
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for RelayTransactionVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]
@@ -16513,7 +16658,12 @@ impl ::std::iter::Iterator for IndexTransactionVecIterator {
         }
     }
 }
-impl IntoIterator for IndexTransactionVec {
+impl ::std::iter::ExactSizeIterator for IndexTransactionVecIterator {
+    fn len(&self) -> usize {
+        self.2 - self.1
+    }
+}
+impl ::std::iter::IntoIterator for IndexTransactionVec {
     type Item = IndexTransaction;
     type IntoIter = IndexTransactionVecIterator;
     fn into_iter(self) -> Self::IntoIter {
@@ -16541,6 +16691,11 @@ impl<'t: 'r, 'r> ::std::iter::Iterator for IndexTransactionVecReaderIterator<'t,
             self.1 += 1;
             Some(ret)
         }
+    }
+}
+impl<'t: 'r, 'r> ::std::iter::ExactSizeIterator for IndexTransactionVecReaderIterator<'t, 'r> {
+    fn len(&self) -> usize {
+        self.2 - self.1
     }
 }
 #[derive(Clone)]

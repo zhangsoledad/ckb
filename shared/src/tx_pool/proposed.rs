@@ -21,7 +21,6 @@ pub(crate) struct Edges<K: Hash + Eq, V: Eq + Hash> {
 }
 
 impl<K: Hash + Eq, V: Eq + Hash> Edges<K, V> {
-    /* TODO apply-serialization fix tests
     #[cfg(test)]
     pub(crate) fn inner_len(&self) -> usize {
         self.inner.len()
@@ -31,7 +30,6 @@ impl<K: Hash + Eq, V: Eq + Hash> Edges<K, V> {
     pub(crate) fn outer_len(&self) -> usize {
         self.outer.len()
     }
-    */
 
     pub(crate) fn insert_outer(&mut self, key: K, value: V) {
         self.outer.insert(key, Some(value));
@@ -292,7 +290,6 @@ impl ProposedPool {
         removed
     }
 
-    /* TODO apply-serialization fix tests
     /// Get n transactions in topology
     #[cfg(test)]
     pub(crate) fn get_txs(&self, n: usize) -> Vec<ProposedEntry> {
@@ -302,7 +299,6 @@ impl ProposedPool {
             .map(|x| x.1.clone())
             .collect()
     }
-    */
 
     pub(crate) fn txs_iter(&self) -> impl Iterator<Item = &ProposedEntry> {
         self.vertices.values()
@@ -315,15 +311,18 @@ impl ProposedPool {
     }
 }
 
-/* TODO apply-serialization fix tests
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ckb_core::transaction::{CellInput, CellOutputBuilder, Transaction, TransactionBuilder};
-    use ckb_core::{Bytes, Capacity};
-    use numext_fixed_hash::{h256, H256};
+    use ckb_types::{
+        bytes::Bytes,
+        core::{Capacity, TransactionBuilder, TransactionView},
+        h256,
+        packed::{CellInput, CellOutput},
+        H256,
+    };
 
-    fn build_tx(inputs: Vec<(&H256, u32)>, outputs_len: usize) -> Transaction {
+    fn build_tx(inputs: Vec<(&H256, u32)>, outputs_len: usize) -> TransactionView {
         TransactionBuilder::default()
             .inputs(
                 inputs.into_iter().map(|(txid, index)| {
@@ -331,11 +330,11 @@ mod tests {
                 }),
             )
             .outputs((0..outputs_len).map(|i| {
-                CellOutputBuilder::default()
-                    .capacity(Capacity::bytes(i + 1).unwrap())
+                CellOutput::new_builder()
+                    .capacity(Capacity::bytes(i + 1).unwrap().pack())
                     .build()
             }))
-            .outputs_data((0..outputs_len).map(|_| Bytes::new()))
+            .outputs_data((0..outputs_len).map(|_| Bytes::new().pack()))
             .build()
     }
 
@@ -346,8 +345,8 @@ mod tests {
     #[test]
     fn test_add_entry() {
         let tx1 = build_tx(vec![(&H256::zero(), 1), (&H256::zero(), 2)], 1);
-        let tx1_hash = tx1.hash();
-        let tx2 = build_tx(vec![(tx1_hash, 0)], 1);
+        let tx1_hash: H256 = tx1.hash().unpack();
+        let tx2 = build_tx(vec![(&tx1_hash, 0)], 1);
 
         let mut pool = ProposedPool::new();
         let id1 = tx1.proposal_short_id();
@@ -414,14 +413,14 @@ mod tests {
     fn test_add_no_roots() {
         let tx1 = build_tx(vec![(&H256::zero(), 1)], 3);
         let tx2 = build_tx(vec![], 4);
-        let tx1_hash = tx1.hash();
-        let tx2_hash = tx2.hash();
+        let tx1_hash: H256 = tx1.hash().unpack();
+        let tx2_hash: H256 = tx2.hash().unpack();
 
-        let tx3 = build_tx(vec![(tx1_hash, 0), (&H256::zero(), 2)], 2);
-        let tx4 = build_tx(vec![(tx1_hash, 1), (tx2_hash, 0)], 2);
+        let tx3 = build_tx(vec![(&tx1_hash, 0), (&H256::zero(), 2)], 2);
+        let tx4 = build_tx(vec![(&tx1_hash, 1), (&tx2_hash, 0)], 2);
 
-        let tx3_hash = tx3.hash();
-        let tx5 = build_tx(vec![(tx1_hash, 2), (tx3_hash, 0)], 2);
+        let tx3_hash: H256 = tx3.hash().unpack();
+        let tx5 = build_tx(vec![(&tx1_hash, 2), (&tx3_hash, 0)], 2);
 
         let id1 = tx1.proposal_short_id();
         let id3 = tx3.proposal_short_id();
@@ -441,7 +440,7 @@ mod tests {
         assert_eq!(pool.edges.inner_len(), 13);
         assert_eq!(pool.edges.outer_len(), 2);
 
-        let mut mineable: Vec<Transaction> =
+        let mut mineable: Vec<TransactionView> =
             pool.get_txs(0).into_iter().map(|x| x.transaction).collect();
         assert_eq!(0, mineable.len());
 
@@ -504,4 +503,3 @@ mod tests {
         assert_eq!(4, mineable.len());
     }
 }
-*/

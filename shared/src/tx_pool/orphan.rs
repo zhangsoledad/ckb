@@ -28,12 +28,10 @@ impl OrphanPool {
         self.get(id).map(|x| &x.transaction)
     }
 
-    /* TODO apply-serialization fix tests
     #[cfg(test)]
     pub(crate) fn contains(&self, tx: &TransactionView) -> bool {
         self.vertices.contains_key(&tx.proposal_short_id())
     }
-    */
 
     pub(crate) fn contains_key(&self, id: &ProposalShortId) -> bool {
         self.vertices.contains_key(id)
@@ -114,15 +112,18 @@ impl OrphanPool {
     }
 }
 
-/* TODO apply-serialization fix tests
 #[cfg(test)]
 mod tests {
-    use super::{OrphanPool, OutPoint};
-    use ckb_core::transaction::{CellInput, CellOutputBuilder, Transaction, TransactionBuilder};
-    use ckb_core::{Bytes, Capacity};
-    use numext_fixed_hash::H256;
+    use super::OrphanPool;
+    use ckb_types::{
+        bytes::Bytes,
+        core::{Capacity, TransactionBuilder, TransactionView},
+        packed::{CellInput, CellOutput, OutPoint},
+        prelude::*,
+        H256,
+    };
 
-    fn build_tx(inputs: Vec<(&H256, u32)>, outputs_len: usize) -> Transaction {
+    fn build_tx(inputs: Vec<(&H256, u32)>, outputs_len: usize) -> TransactionView {
         TransactionBuilder::default()
             .inputs(
                 inputs.into_iter().map(|(txid, index)| {
@@ -130,11 +131,11 @@ mod tests {
                 }),
             )
             .outputs((0..outputs_len).map(|i| {
-                CellOutputBuilder::default()
-                    .capacity(Capacity::bytes(i + 1).unwrap())
+                CellOutput::new_builder()
+                    .capacity(Capacity::bytes(i + 1).unwrap().pack())
                     .build()
             }))
-            .outputs_data((0..outputs_len).map(|_| Bytes::new()))
+            .outputs_data((0..outputs_len).map(|_| Bytes::new().pack()))
             .build()
     }
 
@@ -145,21 +146,21 @@ mod tests {
         let mut pool = OrphanPool::new();
 
         let tx1 = build_tx(vec![(&H256::zero(), 0)], 1);
-        let tx1_hash = tx1.hash();
+        let tx1_hash: H256 = tx1.hash().unpack();
 
-        let tx2 = build_tx(vec![(tx1_hash, 0)], 1);
-        let tx2_hash = tx2.hash();
+        let tx2 = build_tx(vec![(&tx1_hash, 0)], 1);
+        let tx2_hash: H256 = tx2.hash().unpack();
 
-        let tx3 = build_tx(vec![(tx2_hash, 0)], 1);
-        let tx3_hash = tx3.hash();
+        let tx3 = build_tx(vec![(&tx2_hash, 0)], 1);
+        let tx3_hash: H256 = tx3.hash().unpack();
 
-        let tx4 = build_tx(vec![(tx3_hash, 0)], 1);
+        let tx4 = build_tx(vec![(&tx3_hash, 0)], 1);
 
         // the tx5 and its descendants(tx6) conflict with tx1
         let tx5 = build_tx(vec![(&H256::zero(), 0)], 2);
-        let tx5_hash = tx5.hash();
+        let tx5_hash: H256 = tx5.hash().unpack();
 
-        let tx6 = build_tx(vec![(tx5_hash, 0)], 1);
+        let tx6 = build_tx(vec![(&tx5_hash, 0)], 1);
 
         pool.add_tx(None, MOCK_SIZE, tx2.clone(), tx1.output_pts().into_iter());
         pool.add_tx(None, MOCK_SIZE, tx3.clone(), tx2.output_pts().into_iter());
@@ -168,7 +169,7 @@ mod tests {
             None,
             MOCK_SIZE,
             tx5.clone(),
-            tx1.inputs().to_vec().into_iter().map(|x| x.previous_output),
+            tx1.inputs().into_iter().map(|x| x.previous_output()),
         );
         pool.add_tx(None, MOCK_SIZE, tx6.clone(), tx5.output_pts().into_iter());
 
@@ -195,15 +196,15 @@ mod tests {
         let mut pool = OrphanPool::new();
 
         let tx1 = build_tx(vec![(&H256::zero(), 0)], 1);
-        let tx1_hash = tx1.hash();
+        let tx1_hash: H256 = tx1.hash().unpack();
 
         let tx2 = build_tx(vec![(&H256::zero(), 1)], 1);
-        let tx2_hash = tx2.hash();
+        let tx2_hash: H256 = tx2.hash().unpack();
 
-        let tx3 = build_tx(vec![(tx1_hash, 0), (tx2_hash, 1)], 1);
-        let tx3_hash = tx3.hash();
+        let tx3 = build_tx(vec![(&tx1_hash, 0), (&tx2_hash, 1)], 1);
+        let tx3_hash: H256 = tx3.hash().unpack();
 
-        let tx4 = build_tx(vec![(tx3_hash, 0)], 1);
+        let tx4 = build_tx(vec![(&tx3_hash, 0)], 1);
 
         pool.add_tx(None, MOCK_SIZE, tx3.clone(), tx2.output_pts().into_iter());
         pool.add_tx(None, MOCK_SIZE, tx4.clone(), tx3.output_pts().into_iter());
@@ -234,15 +235,15 @@ mod tests {
         let mut pool = OrphanPool::new();
 
         let tx1 = build_tx(vec![(&H256::zero(), 0)], 1);
-        let tx1_hash = tx1.hash();
+        let tx1_hash: H256 = tx1.hash().unpack();
 
-        let tx2 = build_tx(vec![(tx1_hash, 0)], 1);
-        let tx2_hash = tx2.hash();
+        let tx2 = build_tx(vec![(&tx1_hash, 0)], 1);
+        let tx2_hash: H256 = tx2.hash().unpack();
 
-        let tx3 = build_tx(vec![(tx2_hash, 0)], 1);
-        let tx3_hash = tx3.hash();
+        let tx3 = build_tx(vec![(&tx2_hash, 0)], 1);
+        let tx3_hash: H256 = tx3.hash().unpack();
 
-        let tx4 = build_tx(vec![(tx3_hash, 0)], 1);
+        let tx4 = build_tx(vec![(&tx3_hash, 0)], 1);
 
         pool.add_tx(None, MOCK_SIZE, tx2.clone(), tx1.output_pts().into_iter());
         pool.add_tx(None, MOCK_SIZE, tx3.clone(), tx2.output_pts().into_iter());
@@ -261,4 +262,3 @@ mod tests {
         assert!(!pool.contains(&tx4));
     }
 }
-*/

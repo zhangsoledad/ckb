@@ -84,24 +84,22 @@ impl CandidateUncles {
     }
 }
 
-/* TODO apply-serialization fix tests
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ckb_core::block::BlockBuilder;
-    use ckb_core::header::HeaderBuilder;
+    use ckb_types::core::BlockBuilder;
 
     #[test]
     fn test_candidate_uncles_basic() {
         let mut candidate_uncles = CandidateUncles::new();
-        let block = &BlockBuilder::default().build();
-        assert!(candidate_uncles.insert(Arc::new(block.into())));
+        let block = &BlockBuilder::default().build().as_uncle();
+        assert!(candidate_uncles.insert(Arc::new(block.data())));
         assert_eq!(candidate_uncles.len(), 1);
         // insert duplicate
-        assert!(!candidate_uncles.insert(Arc::new(block.into())));
+        assert!(!candidate_uncles.insert(Arc::new(block.data())));
         assert_eq!(candidate_uncles.len(), 1);
 
-        assert!(candidate_uncles.remove(&Arc::new(block.into())));
+        assert!(candidate_uncles.remove(&Arc::new(block.data())));
         assert_eq!(candidate_uncles.len(), 0);
         assert_eq!(candidate_uncles.map.len(), 0);
     }
@@ -112,15 +110,15 @@ mod tests {
 
         let mut blocks = Vec::new();
         for i in 0..(MAX_CANDIDATE_UNCLES + 3) {
-            let block = BlockBuilder::from_header_builder(
-                HeaderBuilder::default().number(i as BlockNumber),
-            )
-            .build();
+            let block = BlockBuilder::new()
+                .number((i as BlockNumber).pack())
+                .build()
+                .as_uncle();
             blocks.push(block);
         }
 
         for block in &blocks {
-            candidate_uncles.insert(Arc::new(block.into()));
+            candidate_uncles.insert(Arc::new(block.data()));
         }
         let first_key = *candidate_uncles.map.keys().next().unwrap();
         assert_eq!(candidate_uncles.len(), MAX_CANDIDATE_UNCLES);
@@ -128,7 +126,7 @@ mod tests {
 
         candidate_uncles.clear();
         for block in blocks.iter().rev() {
-            candidate_uncles.insert(Arc::new(block.into()));
+            candidate_uncles.insert(Arc::new(block.data()));
         }
         let first_key = *candidate_uncles.map.keys().next().unwrap();
         assert_eq!(candidate_uncles.len(), MAX_CANDIDATE_UNCLES);
@@ -141,17 +139,17 @@ mod tests {
 
         let mut blocks = Vec::new();
         for i in 0..(MAX_PER_HEIGHT + 3) {
-            let block =
-                BlockBuilder::from_header_builder(HeaderBuilder::default().timestamp(i as u64))
-                    .build();
+            let block = BlockBuilder::new()
+                .timestamp((i as u64).pack())
+                .build()
+                .as_uncle();
             blocks.push(block);
         }
 
         for block in &blocks {
-            candidate_uncles.insert(Arc::new(block.into()));
+            candidate_uncles.insert(Arc::new(block.data()));
         }
         assert_eq!(candidate_uncles.map.len(), 1);
         assert_eq!(candidate_uncles.len(), MAX_PER_HEIGHT);
     }
 }
-*/
