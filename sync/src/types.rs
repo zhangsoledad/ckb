@@ -11,7 +11,6 @@ use ckb_logger::{debug, debug_target, error};
 use ckb_network::{CKBProtocolContext, PeerIndex};
 use ckb_shared::{shared::Shared, Snapshot};
 use ckb_store::{ChainDB, ChainStore};
-use ckb_traits::ChainProvider;
 use ckb_types::{
     core::{self, BlockNumber, Cycle, EpochExt},
     packed::{self, Byte32},
@@ -715,10 +714,7 @@ impl SyncSharedState {
         mem::replace(&mut *state, HashMap::default())
     }
     pub fn tip_header(&self) -> core::HeaderView {
-        self.shared
-            .store()
-            .get_tip_header()
-            .expect("get_tip_header")
+        self.shared.snapshot().tip_header().clone()
     }
     pub fn consensus(&self) -> &Consensus {
         self.shared.consensus()
@@ -784,19 +780,17 @@ impl SyncSharedState {
         self.header_map.write().remove(hash);
     }
     pub fn get_header_view(&self, hash: &Byte32) -> Option<HeaderView> {
+        let snapshot = self.shared.snapshot();
         self.header_map.read().get(hash).cloned().or_else(|| {
-            self.shared
-                .store()
-                .get_block_header(hash)
-                .and_then(|header| {
-                    self.shared.store().get_block_ext(&hash).map(|block_ext| {
-                        HeaderView::new(
-                            header,
-                            block_ext.total_difficulty,
-                            block_ext.total_uncles_count,
-                        )
-                    })
+            snapshot.get_block_header(hash).and_then(|header| {
+                snapshot.get_block_ext(&hash).map(|block_ext| {
+                    HeaderView::new(
+                        header,
+                        block_ext.total_difficulty,
+                        block_ext.total_uncles_count,
+                    )
                 })
+            })
         })
     }
     pub fn get_header(&self, hash: &Byte32) -> Option<core::HeaderView> {
@@ -805,7 +799,7 @@ impl SyncSharedState {
             .get(hash)
             .map(HeaderView::inner)
             .cloned()
-            .or_else(|| self.shared.store().get_block_header(hash))
+            .or_else(|| self.shared.snapshot().get_block_header(hash))
     }
 
     pub fn get_epoch_ext(&self, hash: &Byte32) -> Option<EpochExt> {
@@ -813,7 +807,7 @@ impl SyncSharedState {
             .read()
             .get_epoch_ext(hash)
             .cloned()
-            .or_else(|| self.shared.get_block_epoch(&hash))
+            .or_else(|| self.shared.snapshot().get_block_epoch(&hash))
     }
 
     pub fn insert_epoch(&self, header: &core::HeaderView, epoch: EpochExt) {
@@ -920,11 +914,12 @@ impl SyncSharedState {
             return None;
         }
 
+        let snapshot = self.shared.snapshot();
         // iterator are lazy
         let (index, latest_common) = locator
             .iter()
             .enumerate()
-            .map(|(index, hash)| (index, self.shared.store().get_block_number(hash)))
+            .map(|(index, hash)| (index, snapshot.get_block_number(hash)))
             .find(|(_index, number)| number.is_some())
             .expect("locator last checked");
 
@@ -934,16 +929,16 @@ impl SyncSharedState {
 
         if let Some(header) = locator
             .get(index - 1)
-            .and_then(|hash| self.shared.store().get_block_header(hash))
+            .and_then(|hash| snapshot.get_block_header(hash))
         {
             let mut block_hash = header.data().raw().parent_hash();
             loop {
-                let block_header = match self.shared.store().get_block_header(&block_hash) {
+                let block_header = match snapshot.get_block_header(&block_hash) {
                     None => break latest_common,
                     Some(block_header) => block_header,
                 };
 
-                if let Some(block_number) = self.shared.store().get_block_number(&block_hash) {
+                if let Some(block_number) = snapshot.get_block_number(&block_hash) {
                     return Some(block_number);
                 }
 
@@ -960,14 +955,15 @@ impl SyncSharedState {
         hash_stop: &Byte32,
     ) -> Vec<core::HeaderView> {
         let tip_number = self.tip_header().number();
+        let snapshot = self.shared.snapshot();
         let max_height = cmp::min(
             block_number + 1 + MAX_HEADERS_LEN as BlockNumber,
             tip_number + 1,
         );
         (block_number + 1..max_height)
-            .filter_map(|block_number| self.shared.store().get_block_hash(block_number))
+            .filter_map(|block_number| snapshot.get_block_hash(block_number))
             .take_while(|block_hash| block_hash != hash_stop)
-            .filter_map(|block_hash| self.shared.store().get_block_header(&block_hash))
+            .filter_map(|block_hash| snapshot.get_block_header(&block_hash))
             .collect()
     }
 
@@ -1146,8 +1142,7 @@ impl SyncSharedState {
     ) -> Result<bool, FailureError> {
         let known_parent = |block: &core::BlockView| {
             self.store()
-                .get_block_header(&block.data().header().raw().parent_hash())
-                .is_some()
+                .block_exists(&block.data().header().raw().parent_hash())
         };
 
         // Insert the given block into orphan_block_pool if its parent is not found

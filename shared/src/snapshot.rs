@@ -6,15 +6,16 @@ use ckb_db::{
 };
 use ckb_error::Error;
 use ckb_proposal_table::ProposalView;
+use ckb_reward_calculator::RewardCalculator;
 use ckb_store::{ChainStore, StoreSnapshot};
 use ckb_traits::BlockMedianTimeContext;
 use ckb_types::core::error::OutPointError;
 use ckb_types::{
     core::{
         cell::{CellProvider, CellStatus, HeaderChecker},
-        BlockNumber, EpochExt, HeaderView, TransactionMeta,
+        BlockNumber, BlockReward, EpochExt, HeaderView, TransactionMeta,
     },
-    packed::{Byte32, OutPoint},
+    packed::{Byte32, OutPoint, Script},
     prelude::*,
     U256,
 };
@@ -102,6 +103,13 @@ impl Snapshot {
 
     pub fn total_difficulty(&self) -> &U256 {
         &self.total_difficulty
+    }
+
+    pub fn finalize_block_reward(
+        &self,
+        parent: &HeaderView,
+    ) -> Result<(Script, BlockReward), Error> {
+        RewardCalculator::new(self.consensus(), self).block_reward(parent)
     }
 }
 

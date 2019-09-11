@@ -855,6 +855,7 @@ dependencies = [
  "ckb-network 0.21.0-pre",
  "ckb-network-alert 0.21.0-pre",
  "ckb-notify 0.21.0-pre",
+ "ckb-reward-calculator 0.21.0-pre",
  "ckb-shared 0.21.0-pre",
  "ckb-store 0.21.0-pre",
  "ckb-sync 0.21.0-pre",

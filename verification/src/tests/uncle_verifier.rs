@@ -7,7 +7,6 @@ use ckb_error::assert_error_eq;
 use ckb_notify::NotifyService;
 use ckb_shared::shared::{Shared, SharedBuilder};
 use ckb_store::{ChainDB, ChainStore};
-use ckb_traits::ChainProvider;
 use ckb_types::{
     core::{
         BlockBuilder, BlockNumber, BlockView, EpochExt, HeaderView, TransactionBuilder,
@@ -82,9 +81,10 @@ fn prepare() -> (Shared, Vec<BlockView>, Vec<BlockView>) {
 
     let mut parent = genesis.clone();
     for _ in 1..number {
-        let parent_epoch = shared.get_block_epoch(&parent.hash()).unwrap();
-        let epoch = shared
-            .next_epoch_ext(&parent_epoch, &parent)
+        let snapshot = shared.snapshot();
+        let parent_epoch = snapshot.get_block_epoch(&parent.hash()).unwrap();
+        let epoch = snapshot
+            .next_epoch_ext(shared.consensus(), &parent_epoch, &parent)
             .unwrap_or(parent_epoch);
         let new_block = gen_block(&parent, random(), &epoch);
         chain_controller
@@ -98,9 +98,10 @@ fn prepare() -> (Shared, Vec<BlockView>, Vec<BlockView>) {
 
     // if block_number < 11 { chain1 == chain2 } else { chain1 != chain2 }
     for i in 1..number {
-        let parent_epoch = shared.get_block_epoch(&parent.hash()).unwrap();
-        let epoch = shared
-            .next_epoch_ext(&parent_epoch, &parent)
+        let snapshot = shared.snapshot();
+        let parent_epoch = snapshot.get_block_epoch(&parent.hash()).unwrap();
+        let epoch = snapshot
+            .next_epoch_ext(shared.consensus(), &parent_epoch, &parent)
             .unwrap_or(parent_epoch);
         let new_block = if i > 10 {
             gen_block(&parent, random(), &epoch)
@@ -129,9 +130,10 @@ fn dummy_context(shared: &Shared) -> VerifyContext<'_, ChainDB> {
 }
 
 fn epoch(shared: &Shared, chain: &[BlockView], index: usize) -> EpochExt {
-    let parent_epoch = shared.get_block_epoch(&chain[index].hash()).unwrap();
-    shared
-        .next_epoch_ext(&parent_epoch, &chain[index].header())
+    let snapshot = shared.snapshot();
+    let parent_epoch = snapshot.get_block_epoch(&chain[index].hash()).unwrap();
+    snapshot
+        .next_epoch_ext(shared.consensus(), &parent_epoch, &chain[index].header())
         .unwrap_or(parent_epoch)
 }
 
@@ -581,7 +583,6 @@ fn test_uncle_with_uncle_descendant() {
     consensus.max_block_proposals_limit = 3;
     consensus.genesis_epoch_ext.set_length(10);
     let (controller, shared) = start_chain(Some(consensus));
-    ckb_store::set_cache_enable(false);
 
     for block in &chain2 {
         controller

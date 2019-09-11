@@ -4,6 +4,7 @@ use crate::MAX_HEADERS_LEN;
 use ckb_error::{Error, ErrorKind};
 use ckb_logger::{debug, log_enabled, warn, Level};
 use ckb_network::{CKBProtocolContext, PeerIndex};
+use ckb_store::ChainStore;
 use ckb_traits::BlockMedianTimeContext;
 use ckb_types::{
     core::{self, BlockNumber, EpochExt},
@@ -34,17 +35,17 @@ impl<'a> VerifierResolver<'a> {
         header: &'a core::HeaderView,
         synchronizer: &'a Synchronizer,
     ) -> Self {
+        let consensus = synchronizer.shared.consensus();
+        let snapshot = synchronizer.shared.snapshot();
         let epoch = parent
             .and_then(|parent| {
-                synchronizer
-                    .shared
+                snapshot
                     .get_epoch_ext(&parent.hash())
                     .map(|ext| (parent, ext))
             })
             .map(|(parent, last_epoch)| {
-                synchronizer
-                    .shared
-                    .next_epoch_ext(&last_epoch, parent)
+                snapshot
+                    .next_epoch_ext(consensus, &last_epoch, parent)
                     .unwrap_or(last_epoch)
             });
 

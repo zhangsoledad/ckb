@@ -40,7 +40,7 @@ const META_TIP_HEADER_KEY: &[u8] = b"TIP_HEADER";
 const META_CURRENT_EPOCH_KEY: &[u8] = b"CURRENT_EPOCH";
 
 lazy_static! {
-    static ref CACHE_ENABLE: AtomicBool = AtomicBool::new(true);
+    static ref CACHE_ENABLE: AtomicBool = AtomicBool::new(false);
     static ref HEADER_CACHE: Mutex<LruCache<Byte32, HeaderView>> =
         { Mutex::new(LruCache::new(4096)) };
     static ref CELL_DATA_CACHE: Mutex<LruCache<(Byte32, u32), (Bytes, Byte32)>> =

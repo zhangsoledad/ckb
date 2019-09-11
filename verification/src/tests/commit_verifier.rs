@@ -7,7 +7,6 @@ use ckb_notify::NotifyService;
 use ckb_shared::shared::{Shared, SharedBuilder};
 use ckb_store::{ChainDB, ChainStore};
 use ckb_test_chain_utils::always_success_cell;
-use ckb_traits::ChainProvider;
 use ckb_types::{
     bytes::Bytes,
     core::{

@@ -15,7 +15,6 @@ use ckb_shared::{
 };
 use ckb_store::ChainStore;
 use ckb_test_chain_utils::always_success_cell;
-use ckb_traits::ChainProvider;
 use ckb_types::prelude::*;
 use ckb_types::{
     bytes::Bytes,
@@ -115,16 +114,14 @@ fn setup_node(thread_name: &str, height: u64) -> (TestNode, Shared) {
     for _i in 0..height {
         let number = block.header().number() + 1;
         let timestamp = block.header().timestamp() + 1;
+        let snapshot: &Snapshot = &shared.snapshot();
 
-        let last_epoch = shared
-            .store()
-            .get_block_epoch(&block.header().hash())
-            .unwrap();
-        let epoch = shared
-            .next_epoch_ext(&last_epoch, &block.header())
+        let last_epoch = snapshot.get_block_epoch(&block.header().hash()).unwrap();
+        let epoch = snapshot
+            .next_epoch_ext(shared.consensus(), &last_epoch, &block.header())
             .unwrap_or(last_epoch);
 
-        let (_, reward) = shared.finalize_block_reward(&block.header()).unwrap();
+        let (_, reward) = snapshot.finalize_block_reward(&block.header()).unwrap();
 
         let cellbase = TransactionBuilder::default()
             .input(CellInput::new_cellbase_input(number))
@@ -139,10 +136,9 @@ fn setup_node(thread_name: &str, height: u64) -> (TestNode, Shared) {
             .build();
 
         let dao = {
-            let snapshot: &Snapshot = &shared.snapshot();
             let resolved_cellbase =
                 resolve_transaction(&cellbase, &mut HashSet::new(), snapshot, snapshot).unwrap();
-            DaoCalculator::new(shared.consensus(), shared.store())
+            DaoCalculator::new(shared.consensus(), snapshot)
                 .dao_field(&[resolved_cellbase], &block.header())
                 .unwrap()
         };

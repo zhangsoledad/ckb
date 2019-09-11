@@ -5,7 +5,6 @@ use crate::tests::util::{
 use ckb_chain_spec::consensus::Consensus;
 use ckb_dao_utils::genesis_dao_data;
 use ckb_test_chain_utils::always_success_cell;
-use ckb_traits::ChainProvider;
 use ckb_types::prelude::*;
 use ckb_types::{
     bytes::Bytes,
@@ -215,7 +214,10 @@ fn finalize_reward() {
         blocks.push(block);
     }
 
-    let (target, reward) = shared.finalize_block_reward(&blocks[21].header()).unwrap();
+    let (target, reward) = shared
+        .snapshot()
+        .finalize_block_reward(&blocks[21].header())
+        .unwrap();
     assert_eq!(target, bob);
 
     // bob proposed 8 txs in 12, committed in 22
@@ -248,7 +250,10 @@ fn finalize_reward() {
         .process_block(Arc::new(block.clone()), true)
         .expect("process block ok");
 
-    let (target, reward) = shared.finalize_block_reward(&block.header()).unwrap();
+    let (target, reward) = shared
+        .snapshot()
+        .finalize_block_reward(&block.header())
+        .unwrap();
     assert_eq!(target, alice);
 
     // alice proposed 16 txs in block 13, committed in 22, 23
