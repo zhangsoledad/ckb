@@ -312,7 +312,7 @@ mod tests {
     };
 
     fn new_store() -> ChainDB {
-        ChainDB::new(RocksDB::open_tmp(COLUMNS))
+        ChainDB::new(RocksDB::open_tmp(COLUMNS), None)
     }
 
     fn prepare_store(

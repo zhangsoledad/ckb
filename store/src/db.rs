@@ -1,3 +1,5 @@
+use crate::cache::StoreCache;
+use crate::config::StoreConfig;
 use crate::store::ChainStore;
 use crate::transaction::StoreTransaction;
 use crate::StoreSnapshot;
@@ -14,13 +16,19 @@ use ckb_types::{
     prelude::*,
     utilities::ChainRootMMR,
 };
+use std::sync::Arc;
 
 pub struct ChainDB {
     db: RocksDB,
+    cache: Arc<StoreCache>,
 }
 
 impl<'a> ChainStore<'a> for ChainDB {
     type Vector = DBPinnableSlice<'a>;
+
+    fn cache(&'a self) -> Option<&'a StoreCache> {
+        Some(&self.cache)
+    }
 
     fn get(&'a self, col: Col, key: &[u8]) -> Option<Self::Vector> {
         self.db
@@ -41,8 +49,14 @@ impl<'a> ChainStore<'a> for ChainDB {
 }
 
 impl ChainDB {
-    pub fn new(db: RocksDB) -> Self {
-        ChainDB { db }
+    pub fn new(db: RocksDB, config: Option<StoreConfig>) -> Self {
+        let cache = config
+            .map(StoreCache::from_config)
+            .unwrap_or_else(StoreCache::default);
+        ChainDB {
+            db,
+            cache: Arc::new(cache),
+        }
     }
 
     pub fn traverse_cell_set<F>(&self, mut callback: F) -> Result<(), Error>
@@ -61,12 +75,14 @@ impl ChainDB {
     pub fn begin_transaction(&self) -> StoreTransaction {
         StoreTransaction {
             inner: self.db.transaction(),
+            cache: Arc::clone(&self.cache),
         }
     }
 
     pub fn get_snapshot(&self) -> StoreSnapshot {
         StoreSnapshot {
             inner: self.db.get_snapshot(),
+            cache: Arc::clone(&self.cache),
         }
     }
 
@@ -143,7 +159,7 @@ mod tests {
     #[test]
     fn save_and_get_block() {
         let db = setup_db(COLUMNS);
-        let store = ChainDB::new(db);
+        let store = ChainDB::new(db, None);
         let consensus = Consensus::default();
         let block = consensus.genesis_block();
 
@@ -157,7 +173,7 @@ mod tests {
     #[test]
     fn save_and_get_block_with_transactions() {
         let db = setup_db(COLUMNS);
-        let store = ChainDB::new(db);
+        let store = ChainDB::new(db, None);
         let block = packed::Block::new_builder()
             .transactions(
                 (0..3)
@@ -178,7 +194,7 @@ mod tests {
     #[test]
     fn save_and_get_block_ext() {
         let db = setup_db(COLUMNS);
-        let store = ChainDB::new(db);
+        let store = ChainDB::new(db, None);
         let consensus = Consensus::default();
         let block = consensus.genesis_block();
 
@@ -200,7 +216,7 @@ mod tests {
     #[test]
     fn index_store() {
         let db = RocksDB::open_tmp(COLUMNS);
-        let store = ChainDB::new(db);
+        let store = ChainDB::new(db, None);
         let consensus = Consensus::default();
         let block = consensus.genesis_block();
         let hash = block.hash();

@@ -195,7 +195,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn new_store() -> ChainDB {
-        ChainDB::new(RocksDB::open_tmp(COLUMNS))
+        ChainDB::new(RocksDB::open_tmp(COLUMNS), None)
     }
 
     fn build_cell_meta(capacity_bytes: usize, data: Bytes) -> CellMeta {
