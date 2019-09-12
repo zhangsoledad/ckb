@@ -512,7 +512,6 @@ mod tests {
         Snapshot,
     };
     use ckb_store::ChainStore;
-    use ckb_traits::chain_provider::ChainProvider;
     use ckb_types::{
         bytes::Bytes,
         core::{
@@ -556,7 +555,10 @@ mod tests {
         parent_header: &CoreHeaderView,
         number: BlockNumber,
     ) -> TransactionView {
-        let (_, reward) = shared.finalize_block_reward(parent_header).unwrap();
+        let (_, reward) = shared
+            .snapshot()
+            .finalize_block_reward(parent_header)
+            .unwrap();
         TransactionBuilder::default()
             .input(CellInput::new_cellbase_input(number))
             .output(
@@ -624,7 +626,8 @@ mod tests {
             .unwrap();
         let parent_epoch = shared.store().get_block_epoch(&parent.hash()).unwrap();
         let epoch = shared
-            .next_epoch_ext(&parent_epoch, &parent)
+            .snapshot()
+            .next_epoch_ext(shared.consensus(), &parent_epoch, &parent)
             .unwrap_or(parent_epoch);
 
         let block = gen_block(shared, &parent, &epoch, nonce);
@@ -721,7 +724,8 @@ mod tests {
         for i in 1..block_number {
             let parent_epoch = shared1.store().get_block_epoch(&parent.hash()).unwrap();
             let epoch = shared1
-                .next_epoch_ext(&parent_epoch, &parent)
+                .snapshot()
+                .next_epoch_ext(shared1.consensus(), &parent_epoch, &parent)
                 .unwrap_or(parent_epoch);
             let new_block = gen_block(&shared1, &parent, &epoch, i);
             blocks.push(new_block.clone());
@@ -740,7 +744,8 @@ mod tests {
         for i in 1..=block_number {
             let parent_epoch = shared2.store().get_block_epoch(&parent.hash()).unwrap();
             let epoch = shared2
-                .next_epoch_ext(&parent_epoch, &parent)
+                .snapshot()
+                .next_epoch_ext(shared2.consensus(), &parent_epoch, &parent)
                 .unwrap_or(parent_epoch);
             let new_block = gen_block(&shared2, &parent, &epoch, i + 100);
 
@@ -825,7 +830,8 @@ mod tests {
         for i in 1..block_number {
             let parent_epoch = shared1.store().get_block_epoch(&parent.hash()).unwrap();
             let epoch = shared1
-                .next_epoch_ext(&parent_epoch, &parent)
+                .snapshot()
+                .next_epoch_ext(shared1.consensus(), &parent_epoch, &parent)
                 .unwrap_or(parent_epoch);
             let new_block = gen_block(&shared1, &parent, &epoch, i + 100);
 
@@ -858,9 +864,10 @@ mod tests {
             .get_block_header(&shared.store().get_block_hash(0).unwrap())
             .unwrap();
         for i in 1..=block_number {
-            let parent_epoch = shared.store().get_block_epoch(&parent.hash()).unwrap();
-            let epoch = shared
-                .next_epoch_ext(&parent_epoch, &parent)
+            let snapshot = shared.snapshot();
+            let parent_epoch = snapshot.get_block_epoch(&parent.hash()).unwrap();
+            let epoch = snapshot
+                .next_epoch_ext(shared.consensus(), &parent_epoch, &parent)
                 .unwrap_or(parent_epoch);
             let new_block = gen_block(&shared, &parent, &epoch, i + 100);
             blocks.push(new_block.clone());

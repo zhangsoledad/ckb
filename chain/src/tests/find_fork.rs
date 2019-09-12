@@ -4,7 +4,6 @@ use ckb_chain_spec::consensus::Consensus;
 use ckb_notify::NotifyService;
 use ckb_shared::shared::SharedBuilder;
 use ckb_store::ChainStore;
-use ckb_traits::ChainProvider;
 use ckb_types::{
     core::{BlockBuilder, BlockExt, BlockView},
     prelude::Pack,

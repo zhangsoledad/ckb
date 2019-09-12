@@ -8,7 +8,6 @@ use ckb_notify::NotifyService;
 use ckb_shared::shared::{Shared, SharedBuilder};
 use ckb_store::ChainStore;
 use ckb_test_chain_utils::always_success_cell;
-use ckb_traits::ChainProvider;
 use ckb_types::prelude::*;
 use ckb_types::{
     bytes::Bytes,
@@ -47,7 +46,8 @@ pub(crate) fn new_header_builder(shared: &Shared, parent: &HeaderView) -> Header
     let parent_hash = parent.hash();
     let parent_epoch = shared.store().get_block_epoch(&parent_hash).unwrap();
     let epoch = shared
-        .next_epoch_ext(&parent_epoch, parent)
+        .snapshot()
+        .next_epoch_ext(shared.consensus(), &parent_epoch, parent)
         .unwrap_or(parent_epoch);
     HeaderBuilder::default()
         .parent_hash(parent_hash.to_owned())

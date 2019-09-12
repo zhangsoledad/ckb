@@ -14,8 +14,9 @@ tempfile = "3.0"
 ckb-error = { path = "../error" }
 
 [dependencies.rocksdb]
-git = "https://github.com/nervosnetwork/rust-rocksdb"
-rev = "14d2991"
+# git = "https://github.com/nervosnetwork/rust-rocksdb"
+# rev = "14d2991"
+path = "../../rust-rocksdb"
 
 [dev-dependencies]
 tempfile = "3.0"

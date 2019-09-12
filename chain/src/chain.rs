@@ -7,7 +7,6 @@ use ckb_proposal_table::ProposalTable;
 use ckb_shared::shared::Shared;
 use ckb_stop_handler::{SignalSender, StopHandler};
 use ckb_store::{ChainStore, StoreTransaction};
-use ckb_traits::ChainProvider;
 use ckb_types::{
     core::{
         cell::{
@@ -366,12 +365,15 @@ impl ChainService {
             let mut txs_verify_cache = self.shared.lock_txs_verify_cache();
 
             let new_snapshot = self.shared.new_snapshot(
-                tip_header,
+                tip_header.clone(),
                 total_difficulty,
-                epoch,
+                epoch.clone(),
                 cell_set,
                 new_proposals,
             );
+            println!("new_snapshot get_tip_header {:?}", new_snapshot.get_tip_header().unwrap().hash());
+            assert_eq!(new_snapshot.get_block_epoch(&tip_header.hash()).unwrap(), epoch);
+            assert_eq!(new_snapshot.get_tip_header().unwrap(), tip_header);
 
             self.shared.store_snapshot(Arc::clone(&new_snapshot));
 
@@ -712,16 +714,12 @@ impl ChainService {
         let bottom = tip_number - cmp::min(tip_number, len);
 
         for number in (bottom..=tip_number).rev() {
-            let hash = self
-                .shared
-                .store()
-                .get_block_hash(number)
-                .unwrap_or_else(|| {
-                    panic!(format!(
-                        "invaild block number({}), tip={}",
-                        number, tip_number
-                    ))
-                });
+            let hash = snapshot.get_block_hash(number).unwrap_or_else(|| {
+                panic!(format!(
+                    "invaild block number({}), tip={}",
+                    number, tip_number
+                ))
+            });
             debug!("   {} => {}", number, hash);
         }
 

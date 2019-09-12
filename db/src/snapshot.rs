@@ -32,6 +32,7 @@ impl RocksDBSnapshot {
 
     pub fn get_pinned(&self, col: Col, key: &[u8]) -> Result<Option<DBPinnableSlice>> {
         let cf = cf_handle(&self.db, col)?;
+        assert!(!self.inner.is_null());
         self.db
             .get_pinned_cf_opt(cf, &key, &self.ro)
             .map_err(internal_error)
@@ -62,6 +63,9 @@ impl GetCF<ReadOptions> for RocksDBSnapshot {
 
 impl Drop for RocksDBSnapshot {
     fn drop(&mut self) {
+        let tip = self.get_pinned("4", b"TIP_HEADER").unwrap().unwrap();
+        let tip: &[u8] = tip.as_ref();
+        println!("snapshot tip {:?} dropped", tip);
         unsafe {
             ffi::rocksdb_release_snapshot(self.db.base_db_ptr(), self.inner);
         }

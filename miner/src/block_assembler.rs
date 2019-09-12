@@ -14,7 +14,6 @@ use ckb_shared::{
 };
 use ckb_stop_handler::{SignalSender, StopHandler};
 use ckb_store::ChainStore;
-use ckb_traits::ChainProvider;
 use ckb_types::{
     bytes::Bytes,
     core::{
@@ -279,7 +278,7 @@ impl BlockAssembler {
 
         // try get cache
         let snapshot: &Snapshot = &self.shared.snapshot();
-        let tip_header = snapshot.get_tip_header().expect("get tip header");
+        let tip_header = snapshot.tip_header();
         let tip_hash = tip_header.hash();
         let candidate_number = tip_header.number() + 1;
         let current_time = cmp::max(unix_time_as_millis(), tip_header.timestamp() + 1);
@@ -306,7 +305,7 @@ impl BlockAssembler {
 
         let last_epoch = snapshot.get_current_epoch_ext().expect("current epoch ext");
         let next_epoch_ext =
-            snapshot.next_epoch_ext(self.shared.consensus(), &last_epoch, &tip_header);
+            snapshot.next_epoch_ext(self.shared.consensus(), &last_epoch, tip_header);
         let current_epoch = next_epoch_ext.unwrap_or(last_epoch);
         let uncles = self.prepare_uncles(
             &snapshot,
@@ -330,7 +329,7 @@ impl BlockAssembler {
             .hash_type(hash_type.pack())
             .build();
 
-        let cellbase = self.build_cellbase(&snapshot, &tip_header, cellbase_lock)?;
+        let cellbase = self.build_cellbase(&snapshot, tip_header, cellbase_lock)?;
 
         let (proposals, entries, last_txs_updated_at) = {
             let tx_pool = self.shared.try_lock_tx_pool();
@@ -517,7 +516,6 @@ mod tests {
     use ckb_shared::shared::Shared;
     use ckb_shared::shared::SharedBuilder;
     use ckb_store::ChainStore;
-    use ckb_traits::ChainProvider;
     use ckb_types::{
         core::{
             BlockBuilder, BlockNumber, BlockView, Capacity, EpochExt, HeaderBuilder, HeaderView,
@@ -671,7 +669,8 @@ mod tests {
 
         let last_epoch = epoch.clone();
         let epoch = shared
-            .next_epoch_ext(&last_epoch, &block0_1.header())
+            .snapshot()
+            .next_epoch_ext(shared.consensus(), &last_epoch, &block0_1.header())
             .unwrap_or(last_epoch);
 
         let block1_1 = gen_block(&block0_1.header(), 10, &epoch);
@@ -695,7 +694,8 @@ mod tests {
 
         let last_epoch = epoch.clone();
         let epoch = shared
-            .next_epoch_ext(&last_epoch, &block1_1.header())
+            .snapshot()
+            .next_epoch_ext(shared.consensus(), &last_epoch, &block1_1.header())
             .unwrap_or(last_epoch);
 
         let block2_1 = gen_block(&block1_1.header(), 10, &epoch);
@@ -711,7 +711,8 @@ mod tests {
 
         let last_epoch = epoch.clone();
         let epoch = shared
-            .next_epoch_ext(&last_epoch, &block2_1.header())
+            .snapshot()
+            .next_epoch_ext(shared.consensus(), &last_epoch, &block2_1.header())
             .unwrap_or(last_epoch);
 
         let block3_1 = gen_block(&block2_1.header(), 10, &epoch);

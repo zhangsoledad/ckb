@@ -9,7 +9,6 @@ use ckb_dao_utils::genesis_dao_data;
 use ckb_error::assert_error_eq;
 use ckb_shared::shared::Shared;
 use ckb_store::ChainStore;
-use ckb_traits::ChainProvider;
 use ckb_types::core::error::OutPointError;
 use ckb_types::prelude::*;
 use ckb_types::{
@@ -476,7 +475,8 @@ fn prepare_context_chain(
 
     for _ in 1..final_number - 1 {
         let epoch = shared
-            .next_epoch_ext(&last_epoch, &parent)
+            .snapshot()
+            .next_epoch_ext(shared.consensus(), &last_epoch, &parent)
             .unwrap_or(last_epoch);
 
         let transactions = vec![create_cellbase(&mock_store, shared.consensus(), &parent)];
@@ -510,7 +510,8 @@ fn prepare_context_chain(
     let mut last_epoch = epoch.clone();
     for i in 1..final_number {
         let epoch = shared
-            .next_epoch_ext(&last_epoch, &parent)
+            .snapshot()
+            .next_epoch_ext(shared.consensus(), &last_epoch, &parent)
             .unwrap_or(last_epoch);
         let mut uncles = vec![];
         if i < orphan_count {
@@ -661,8 +662,7 @@ fn test_orphan_rate_estimation_overflow() {
     {
         let snapshot = shared.snapshot();
         let tip = snapshot.tip_header().clone();
-        let total_uncles_count = shared
-            .store()
+        let total_uncles_count = snapshot
             .get_block_ext(&tip.hash())
             .unwrap()
             .total_uncles_count;

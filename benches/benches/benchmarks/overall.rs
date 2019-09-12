@@ -10,7 +10,6 @@ use ckb_shared::{
     Snapshot,
 };
 use ckb_store::ChainStore;
-use ckb_traits::ChainProvider;
 use ckb_tx_pool_executor::TxPoolExecutor;
 use ckb_types::{
     bytes::Bytes,
@@ -166,11 +165,8 @@ fn bench(c: &mut Criterion) {
                         let block = raw_block.as_builder().header(header).build().into_view();
 
                         let header_view = block.header();
-                        let resolver = HeaderResolverWrapper::new(
-                            &header_view,
-                            shared.store(),
-                            shared.consensus(),
-                        );
+                        let resolver =
+                            HeaderResolverWrapper::new(&header_view, snapshot, shared.consensus());
                         let header_verifier = HeaderVerifier::new(
                             snapshot,
                             Arc::clone(&shared.consensus().pow_engine()),

@@ -2,7 +2,6 @@ use ckb_error::Error;
 use ckb_shared::shared::Shared;
 use ckb_shared::Snapshot;
 use ckb_store::ChainStore;
-use ckb_traits::chain_provider::ChainProvider;
 use ckb_traits::BlockMedianTimeContext;
 use ckb_types::{
     core::{BlockNumber, Cycle, TransactionView},
@@ -186,7 +185,6 @@ mod tests {
     use ckb_notify::NotifyService;
     use ckb_shared::shared::{Shared, SharedBuilder};
     use ckb_test_chain_utils::always_success_cell;
-    use ckb_traits::ChainProvider;
     use ckb_types::core::error::OutPointError;
     use ckb_types::{
         bytes::Bytes,
@@ -233,9 +231,10 @@ mod tests {
             let number = block.header().number() + 1;
             let timestamp = block.header().timestamp() + 1;
 
-            let last_epoch = shared.get_block_epoch(&block.hash()).unwrap();
-            let epoch = shared
-                .next_epoch_ext(&last_epoch, &block.header())
+            let snapshot = shared.snapshot();
+            let last_epoch = snapshot.get_block_epoch(&block.hash()).unwrap();
+            let epoch = snapshot
+                .next_epoch_ext(shared.consensus(), &last_epoch, &block.header())
                 .unwrap_or(last_epoch);
 
             let outputs = (0..20)
