@@ -264,6 +264,7 @@ fn all_specs() -> SpecMap {
         Box::new(WhitelistOnSessionLimit),
         Box::new(IBDProcessWithWhiteList),
         Box::new(MalformedMessageWithWhitelist),
+        Box::new(MissingUncleRequest),
     ];
     specs.into_iter().map(|spec| (spec.name(), spec)).collect()
 }
