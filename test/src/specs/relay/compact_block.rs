@@ -107,7 +107,7 @@ impl Spec for CompactBlockPrefilled {
         node.generate_blocks((DEFAULT_TX_PROPOSAL_WINDOW.1 + 2) as usize);
 
         // Proposal a tx, and grow up into proposal window
-        let new_tx = node.new_transaction(node.get_tip_block().transactions()[0].hash().clone());
+        let new_tx = node.new_transaction(node.get_tip_block().transactions()[0].hash());
         node.submit_block(
             &node
                 .new_block_builder(None, None, None)
@@ -151,7 +151,7 @@ impl Spec for CompactBlockMissingFreshTxs {
         let (peer_id, _, _) = net.receive();
 
         node.generate_blocks((DEFAULT_TX_PROPOSAL_WINDOW.1 + 2) as usize);
-        let new_tx = node.new_transaction(node.get_tip_block().transactions()[0].hash().clone());
+        let new_tx = node.new_transaction(node.get_tip_block().transactions()[0].hash());
         node.submit_block(
             &node
                 .new_block_builder(None, None, None)
@@ -216,7 +216,7 @@ impl Spec for CompactBlockMissingNotFreshTxs {
         node.generate_blocks((DEFAULT_TX_PROPOSAL_WINDOW.1 + 2) as usize);
 
         // Build the target transaction
-        let new_tx = node.new_transaction(node.get_tip_block().transactions()[0].hash().clone());
+        let new_tx = node.new_transaction(node.get_tip_block().transactions()[0].hash());
         node.submit_block(
             &node
                 .new_block_builder(None, None, None)
@@ -267,7 +267,7 @@ impl Spec for CompactBlockLoseGetBlockTransactions {
         let _ = net.receive();
         node0.generate_blocks((DEFAULT_TX_PROPOSAL_WINDOW.1 + 2) as usize);
 
-        let new_tx = node0.new_transaction(node0.get_tip_block().transactions()[0].hash().clone());
+        let new_tx = node0.new_transaction(node0.get_tip_block().transactions()[0].hash());
         node0.submit_block(
             &node0
                 .new_block_builder(None, None, None)
@@ -371,7 +371,6 @@ impl Spec for CompactBlockRelayParentOfOrphanBlock {
             .unwrap();
         let header = parent
             .header()
-            .to_owned()
             .as_advanced_builder()
             .dao(dao)
             .build();
@@ -421,7 +420,6 @@ impl Spec for CompactBlockRelayParentOfOrphanBlock {
             .header(
                 parent
                     .header()
-                    .to_owned()
                     .as_advanced_builder()
                     .number((parent.header().number() + 1).pack())
                     .timestamp((parent.header().timestamp() + 1).pack())

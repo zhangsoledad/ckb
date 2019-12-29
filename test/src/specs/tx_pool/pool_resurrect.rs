@@ -24,7 +24,7 @@ impl Spec for PoolResurrect {
             let tx = node0.new_transaction(hash.clone());
             hash = node0
                 .rpc_client()
-                .send_transaction(tx.clone().data().into());
+                .send_transaction(tx.data().into());
             txs_hash.push(hash.clone());
         });
 
