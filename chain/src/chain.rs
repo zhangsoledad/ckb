@@ -569,7 +569,7 @@ impl ChainService {
         }
 
         let verify_context = VerifyContext::new(txn, self.shared.consensus());
-        let future_executor = self.shared.tx_pool_controller().executor();
+        let async_handle = self.shared.tx_pool_controller().handle();
 
         let mut found_error = None;
         for (ext, b) in fork
@@ -613,7 +613,7 @@ impl ChainService {
                                 &resolved,
                                 b,
                                 txs_verify_cache.clone(),
-                                &future_executor,
+                                &async_handle,
                                 switch,
                             ) {
                                 Ok((cycles, cache_entries)) => {

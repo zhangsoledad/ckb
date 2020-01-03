@@ -1,6 +1,5 @@
 use crate::cache::{CacheEntry, TxVerifyCache};
 use crate::error::{BlockTransactionsError, EpochError};
-use crate::txs_verify_cache::{FetchCache, UpdateCache};
 use crate::uncles_verifier::{UncleProvider, UnclesVerifier};
 use crate::{
     BlockErrorKind, CellbaseError, CommitError, ContextualTransactionVerifier, TransactionVerifier,
@@ -9,7 +8,6 @@ use crate::{
 use ckb_chain_spec::consensus::Consensus;
 use ckb_dao::DaoCalculator;
 use ckb_error::Error;
-use ckb_future_executor::Executor;
 use ckb_logger::error_target;
 use ckb_reward_calculator::RewardCalculator;
 use ckb_store::ChainStore;
@@ -24,10 +22,15 @@ use ckb_types::{
     packed::{Byte32, CellOutput, Script},
     prelude::*,
 };
-use futures::future::{self, Future};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use std::collections::{HashMap, HashSet};
-use tokio::sync::lock::Lock;
+
+use ckb_async_runtime::Handle;
+// use std::future::Future;
+// use std::pin::Pin;
+// use std::task::{Context, Poll};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub struct VerifyContext<'a, CS> {
     pub(crate) store: &'a CS,
@@ -360,32 +363,36 @@ impl<'a, CS: ChainStore<'a>> BlockTxsVerifier<'a, CS> {
 
     fn fetched_cache<K: IntoIterator<Item = Byte32> + Send + 'static>(
         &self,
-        txs_verify_cache: Lock<TxVerifyCache>,
+        txs_verify_cache: Arc<Mutex<TxVerifyCache>>,
         keys: K,
-        executor: &Executor,
+        handle: &Handle,
     ) -> HashMap<Byte32, CacheEntry> {
-        let fetched_cache = FetchCache::new(txs_verify_cache, keys);
         let (sender, receiver) = crossbeam_channel::bounded(1);
-        executor.spawn(Box::new(fetched_cache.and_then(move |cache| {
-            if let Err(e) = sender.send(cache) {
+        handle.spawn(async move {
+            let guard = txs_verify_cache.lock().await;
+            let ret = keys
+                .into_iter()
+                .filter_map(|hash| guard.get(&hash).cloned().map(|value| (hash, value)))
+                .collect();
+
+            if let Err(e) = sender.send(ret) {
                 error_target!(crate::LOG_TARGET, "TxsVerifier fetched_cache error {:?}", e);
             };
-            future::ok(())
-        })));
+        });
         receiver.recv().expect("fetched cache no exception")
     }
 
     pub fn verify(
         &self,
-        txs_verify_cache: Lock<TxVerifyCache>,
-        executor: &Executor,
+        txs_verify_cache: Arc<Mutex<TxVerifyCache>>,
+        handle: &Handle,
     ) -> Result<(Cycle, Vec<CacheEntry>), Error> {
         let keys: Vec<Byte32> = self
             .resolved
             .iter()
             .map(|rtx| rtx.transaction.hash())
             .collect();
-        let fetched_cache = self.fetched_cache(txs_verify_cache.clone(), keys, executor);
+        let fetched_cache = self.fetched_cache(txs_verify_cache.clone(), keys, handle);
 
         // make verifiers orthogonal
         let ret = self
@@ -441,8 +448,12 @@ impl<'a, CS: ChainStore<'a>> BlockTxsVerifier<'a, CS> {
             .map(|(_, cache_entry)| cache_entry)
             .cloned()
             .collect();
-        let update = UpdateCache::new(txs_verify_cache, ret.into_iter().collect());
-        executor.spawn(Box::new(update));
+        handle.spawn(async move {
+            let mut guard = txs_verify_cache.lock().await;
+            for (k, v) in ret {
+                guard.insert(k, v);
+            }
+        });
 
         if sum > self.context.consensus.max_block_cycles() {
             Err(BlockErrorKind::ExceededMaximumCycles.into())
@@ -514,8 +525,8 @@ impl<'a, CS: ChainStore<'a>> ContextualBlockVerifier<'a, CS> {
         &'a self,
         resolved: &'a [ResolvedTransaction],
         block: &'a BlockView,
-        txs_verify_cache: Lock<TxVerifyCache>,
-        executor: &Executor,
+        txs_verify_cache: Arc<Mutex<TxVerifyCache>>,
+        handle: &Handle,
         switch: SW,
     ) -> Result<(Cycle, Vec<CacheEntry>), Error> {
         let parent_hash = block.data().header().raw().parent_hash();
@@ -561,6 +572,6 @@ impl<'a, CS: ChainStore<'a>> ContextualBlockVerifier<'a, CS> {
             parent_hash,
             resolved,
         )
-        .verify(txs_verify_cache, executor)
+        .verify(txs_verify_cache, handle)
     }
 }
