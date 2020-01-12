@@ -111,6 +111,10 @@ pub(crate) struct DryRunner<'a> {
 }
 
 impl<'a> CellProvider for DryRunner<'a> {
+    fn is_dead(&self, _out_point: &packed::OutPoint) -> bool {
+        false
+    }
+
     fn cell(&self, out_point: &packed::OutPoint, with_data: bool) -> CellStatus {
         let snapshot = self.shared.snapshot();
         snapshot

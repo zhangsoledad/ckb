@@ -135,7 +135,7 @@ pub fn update_tx_pool_for_reorg(
             entries.push((
                 Some(CacheEntry::new(entry.cycles, entry.fee)),
                 entry.size,
-                entry.transaction.to_owned(),
+                entry.rtx.transaction.to_owned(),
             ));
             removed.push(key.id.clone());
         }
@@ -152,14 +152,14 @@ pub fn update_tx_pool_for_reorg(
             entries.push((
                 Some(CacheEntry::new(entry.cycles, entry.fee)),
                 entry.size,
-                entry.transaction.to_owned(),
+                entry.rtx.transaction.to_owned(),
             ));
             removed.push(key.id.clone());
         } else if snapshot.proposals().contains_gap(&key.id) {
             gaps.push((
                 Some(CacheEntry::new(entry.cycles, entry.fee)),
                 entry.size,
-                entry.transaction.to_owned(),
+                entry.rtx.transaction.to_owned(),
             ));
             removed.push(key.id.clone());
         }

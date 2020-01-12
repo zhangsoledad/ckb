@@ -129,7 +129,7 @@ fn next_block(shared: &Shared, parent: &HeaderView) -> BlockView {
         let resolved_cellbase =
             resolve_transaction(cellbase.clone(), &mut HashSet::new(), snapshot, snapshot).unwrap();
         DaoCalculator::new(shared.consensus(), shared.store())
-            .dao_field(&[resolved_cellbase], parent)
+            .dao_field([resolved_cellbase].iter(), parent)
             .unwrap()
     };
     BlockBuilder::default()

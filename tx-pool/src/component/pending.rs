@@ -41,7 +41,7 @@ impl PendingQueue {
     }
 
     pub(crate) fn get_tx(&self, id: &ProposalShortId) -> Option<&TransactionView> {
-        self.inner.get(id).map(|x| &x.transaction)
+        self.inner.get(id).map(|x| &x.rtx.transaction)
     }
 
     pub(crate) fn remove_entry_and_descendants(&mut self, id: &ProposalShortId) -> Vec<TxEntry> {
@@ -104,10 +104,18 @@ impl PendingQueue {
 }
 
 impl CellProvider for PendingQueue {
+    fn is_dead(&self, _out_point: &OutPoint) -> bool {
+        false
+    }
+
     fn cell(&self, out_point: &OutPoint, _with_data: bool) -> CellStatus {
         let tx_hash = out_point.tx_hash();
         if let Some(x) = self.inner.get(&ProposalShortId::from_tx_hash(&tx_hash)) {
-            match x.transaction.output_with_data(out_point.index().unpack()) {
+            match x
+                .rtx
+                .transaction
+                .output_with_data(out_point.index().unpack())
+            {
                 Some((output, data)) => CellStatus::live_cell(
                     CellMetaBuilder::from_cell_output(output, data)
                         .out_point(out_point.to_owned())

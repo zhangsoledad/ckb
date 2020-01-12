@@ -219,7 +219,7 @@ impl<'a> SubmitTxsExecutor<'a> {
 
             let related_dep_out_points = rtx.related_dep_out_points();
             let entry = TxEntry::new(
-                rtx.transaction,
+                rtx,
                 cache_entry.cycles,
                 fee,
                 tx_size,
@@ -227,7 +227,7 @@ impl<'a> SubmitTxsExecutor<'a> {
             );
             let inserted = match status {
                 TxStatus::Fresh => {
-                    let tx_hash = entry.transaction.hash();
+                    let tx_hash = entry.rtx.transaction.hash();
                     let inserted = self.tx_pool.add_pending(entry)?;
                     if inserted {
                         let height = self.tx_pool.snapshot().tip_number();

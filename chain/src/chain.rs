@@ -110,6 +110,15 @@ impl<'a> CellSetWrapper<'a> {
 }
 
 impl<'a> CellProvider for CellSetWrapper<'a> {
+    fn is_dead(&self, out_point: &OutPoint) -> bool {
+        let tx_hash = out_point.tx_hash();
+        let index: u32 = out_point.index().unpack();
+        self.cell_set
+            .get(&tx_hash)
+            .and_then(|tx_meta| tx_meta.is_dead(index as usize))
+            == Some(true)
+    }
+
     fn cell(&self, out_point: &OutPoint, with_data: bool) -> CellStatus {
         let tx_hash = out_point.tx_hash();
         let index = out_point.index().unpack();

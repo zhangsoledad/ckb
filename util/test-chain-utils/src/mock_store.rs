@@ -54,6 +54,10 @@ impl MockStore {
 }
 
 impl CellProvider for MockStore {
+    fn is_dead(&self, _out_point: &OutPoint) -> bool {
+        false
+    }
+
     fn cell(&self, out_point: &OutPoint, _with_data: bool) -> CellStatus {
         match self.0.get_transaction(&out_point.tx_hash()) {
             Some((tx, _)) => tx

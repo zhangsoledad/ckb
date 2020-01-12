@@ -624,7 +624,7 @@ mod tests {
                 resolve_transaction(cellbase.clone(), &mut HashSet::new(), snapshot, snapshot)
                     .unwrap();
             DaoCalculator::new(shared.consensus(), shared.store())
-                .dao_field(&[resolved_cellbase], parent_header)
+                .dao_field([resolved_cellbase].iter(), parent_header)
                 .unwrap()
         };
 

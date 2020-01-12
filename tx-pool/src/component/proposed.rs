@@ -88,6 +88,11 @@ pub struct ProposedPool {
 }
 
 impl CellProvider for ProposedPool {
+    fn is_dead(&self, out_point: &OutPoint) -> bool {
+        self.edges.get_inner(out_point).map(|x| x.is_some()) == Some(true)
+            || self.edges.get_outer(out_point).is_some()
+    }
+
     fn cell(&self, out_point: &OutPoint, _with_data: bool) -> CellStatus {
         if let Some(x) = self.edges.get_inner(out_point) {
             if x.is_some() {
@@ -125,7 +130,7 @@ impl ProposedPool {
     }
 
     pub(crate) fn get_tx(&self, id: &ProposalShortId) -> Option<&TransactionView> {
-        self.get(id).map(|x| &x.transaction)
+        self.get(id).map(|x| &x.rtx.transaction)
     }
 
     pub fn size(&self) -> usize {
@@ -135,14 +140,18 @@ impl ProposedPool {
     pub(crate) fn get_output_with_data(&self, out_point: &OutPoint) -> Option<(CellOutput, Bytes)> {
         self.inner
             .get(&ProposalShortId::from_tx_hash(&out_point.tx_hash()))
-            .and_then(|x| x.transaction.output_with_data(out_point.index().unpack()))
+            .and_then(|x| {
+                x.rtx
+                    .transaction
+                    .output_with_data(out_point.index().unpack())
+            })
     }
 
     // remove entry and all it's descendants
     pub(crate) fn remove_entry_and_descendants(&mut self, id: &ProposalShortId) -> Vec<TxEntry> {
         let removed_entries = self.inner.remove_entry_and_descendants(id);
         for entry in &removed_entries {
-            let tx = &entry.transaction;
+            let tx = &entry.rtx.transaction;
             let inputs = tx.input_pts_iter();
             let outputs = tx.output_pts();
             for i in inputs {
@@ -197,10 +206,10 @@ impl ProposedPool {
     }
 
     pub(crate) fn add_entry(&mut self, entry: TxEntry) -> Result<Option<TxEntry>, SubmitTxError> {
-        let inputs = entry.transaction.input_pts_iter();
-        let outputs = entry.transaction.output_pts();
+        let inputs = entry.rtx.transaction.input_pts_iter();
+        let outputs = entry.rtx.transaction.output_pts();
 
-        let tx_short_id = entry.transaction.proposal_short_id();
+        let tx_short_id = entry.rtx.transaction.proposal_short_id();
 
         for i in inputs {
             if let Some(id) = self.edges.get_inner_mut(&i) {

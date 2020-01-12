@@ -162,20 +162,20 @@ impl SortedTxMap {
     }
 
     pub fn add_entry(&mut self, mut entry: TxEntry) -> Result<Option<TxEntry>, SubmitTxError> {
-        let short_id = entry.transaction.proposal_short_id();
+        let tx = &entry.rtx.transaction;
+        let short_id = tx.proposal_short_id();
 
         // find in pool parents
-        let mut parents: HashSet<ProposalShortId> = HashSet::with_capacity(
-            entry.transaction.inputs().len() + entry.transaction.cell_deps().len(),
-        );
-        for input in entry.transaction.inputs() {
+        let mut parents: HashSet<ProposalShortId> =
+            HashSet::with_capacity(tx.inputs().len() + tx.cell_deps().len());
+        for input in tx.inputs() {
             let parent_hash = &input.previous_output().tx_hash();
             let id = ProposalShortId::from_tx_hash(&(parent_hash));
             if self.links.contains_key(&id) {
                 parents.insert(id);
             }
         }
-        for cell_dep in entry.transaction.cell_deps() {
+        for cell_dep in tx.cell_deps() {
             let id = ProposalShortId::from_tx_hash(&(cell_dep.out_point().tx_hash()));
             if self.links.contains_key(&id) {
                 parents.insert(id);

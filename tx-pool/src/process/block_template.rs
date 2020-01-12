@@ -13,7 +13,9 @@ use ckb_snapshot::Snapshot;
 use ckb_store::ChainStore;
 use ckb_types::{
     core::{
-        cell::{resolve_transaction, OverlayCellProvider, TransactionsProvider},
+        cell::{
+            resolve_transaction, OverlayCellProvider, ResolvedTransaction, TransactionsProvider,
+        },
         Cycle, EpochExt, ScriptHashType, TransactionView, UncleBlockView, Version,
     },
     packed::{CellbaseWitness, ProposalShortId, Script},
@@ -249,31 +251,19 @@ impl Future for BlockTemplateBuilder {
         let consensus = self.snapshot.consensus();
         let tip_header = self.snapshot.tip_header();
         let tip_hash = tip_header.hash();
-        let mut txs =
-            iter::once(&self.cellbase).chain(self.entries.iter().map(|entry| &entry.transaction));
-        let mut seen_inputs = HashSet::new();
-        let transactions_provider = TransactionsProvider::new(txs.clone());
-        let overlay_cell_provider =
-            OverlayCellProvider::new(&transactions_provider, self.snapshot.as_ref());
 
-        let rtxs = txs
-            .try_fold(vec![], |mut rtxs, tx| {
-                resolve_transaction(
-                    tx.clone(),
-                    &mut seen_inputs,
-                    &overlay_cell_provider,
-                    self.snapshot.as_ref(),
-                )
-                .map(|rtx| {
-                    rtxs.push(rtx);
-                    rtxs
-                })
-            })
-            .map_err(|_| BlockAssemblerError::InvalidInput)?;
+        let resolved_cellbase = ResolvedTransaction {
+            transaction: self.cellbase.clone(),
+            resolved_inputs: vec![],
+            resolved_cell_deps: vec![],
+            resolved_dep_groups: vec![],
+        };
 
+        let rtxs =
+            iter::once(&resolved_cellbase).chain(self.entries.iter().map(|entry| &entry.rtx));
         // Generate DAO fields here
         let dao =
-            DaoCalculator::new(consensus, self.snapshot.as_ref()).dao_field(&rtxs, tip_header)?;
+            DaoCalculator::new(consensus, self.snapshot.as_ref()).dao_field(rtxs, tip_header)?;
 
         let candidate_number = tip_header.number() + 1;
         let (bytes_limit, _, version) = self.args;

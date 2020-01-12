@@ -154,7 +154,7 @@ impl CellStatus {
 }
 
 /// Transaction with resolved input cells.
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq)]
 pub struct ResolvedTransaction {
     pub transaction: TransactionView,
     pub resolved_cell_deps: Vec<CellMeta>,
@@ -162,8 +162,15 @@ pub struct ResolvedTransaction {
     pub resolved_dep_groups: Vec<CellMeta>,
 }
 
+impl PartialEq for ResolvedTransaction {
+    fn eq(&self, other: &ResolvedTransaction) -> bool {
+        self.transaction == other.transaction
+    }
+}
+
 pub trait CellProvider {
     fn cell(&self, out_point: &OutPoint, with_data: bool) -> CellStatus;
+    fn is_dead(&self, out_point: &OutPoint) -> bool;
 }
 
 pub struct OverlayCellProvider<'a, A, B> {
@@ -189,6 +196,14 @@ where
     A: CellProvider,
     B: CellProvider,
 {
+    fn is_dead(&self, out_point: &OutPoint) -> bool {
+        if !self.overlay.is_dead(out_point) {
+            self.cell_provider.is_dead(out_point)
+        } else {
+            true
+        }
+    }
+
     fn cell(&self, out_point: &OutPoint, with_data: bool) -> CellStatus {
         match self.overlay.cell(out_point, with_data) {
             CellStatus::Live(cell_meta) => CellStatus::Live(cell_meta),
@@ -239,6 +254,10 @@ impl<'a> BlockCellProvider<'a> {
 }
 
 impl<'a> CellProvider for BlockCellProvider<'a> {
+    fn is_dead(&self, _out_point: &OutPoint) -> bool {
+        false
+    }
+
     fn cell(&self, out_point: &OutPoint, _with_data: bool) -> CellStatus {
         self.output_indices
             .get(&out_point.tx_hash())
@@ -288,6 +307,10 @@ impl<'a> TransactionsProvider<'a> {
 }
 
 impl<'a> CellProvider for TransactionsProvider<'a> {
+    fn is_dead(&self, _out_point: &OutPoint) -> bool {
+        false
+    }
+
     fn cell(&self, out_point: &OutPoint, _with_data: bool) -> CellStatus {
         match self.transactions.get(&out_point.tx_hash()) {
             Some(tx) => tx
@@ -374,6 +397,34 @@ fn resolve_dep_group<F: FnMut(&OutPoint, bool) -> Result<Option<Box<CellMeta>>, 
         }
     }
     Ok(Some((*dep_group_cell, resolved_deps)))
+}
+
+pub fn check_resolve_state<CP: CellProvider, HC: HeaderChecker>(
+    rtx: &ResolvedTransaction,
+    cell_provider: &CP,
+    header_checker: &HC,
+) -> Result<(), Error> {
+    let transaction = &rtx.transaction;
+    for block_hash in transaction.header_deps_iter() {
+        header_checker.check_valid(&block_hash)?;
+    }
+
+    if !transaction.is_cellbase() {
+        for out_point in transaction.input_pts_iter() {
+            if cell_provider.is_dead(&out_point) {
+                return Err(OutPointError::Dead(out_point.clone()).into());
+            }
+        }
+    }
+
+    for cell_dep in transaction.cell_deps_iter() {
+        let out_point = cell_dep.out_point();
+        if cell_provider.is_dead(&out_point) {
+            return Err(OutPointError::Dead(out_point).into());
+        }
+    }
+
+    Ok(())
 }
 
 pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
@@ -525,6 +576,10 @@ mod tests {
         cells: HashMap<OutPoint, Option<CellMeta>>,
     }
     impl CellProvider for CellMemoryDb {
+        fn is_dead(&self, o: &OutPoint) -> bool {
+            self.cells.get(o) == Some(&None)
+        }
+
         fn cell(&self, o: &OutPoint, _with_data: bool) -> CellStatus {
             match self.cells.get(o) {
                 Some(&Some(ref cell_meta)) => CellStatus::live_cell(cell_meta.clone()),
