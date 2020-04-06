@@ -39,19 +39,95 @@ const SYNC_NOTIFY_INTERVAL: Duration = Duration::from_millis(200);
 const IBD_BLOCK_FETCH_INTERVAL: Duration = Duration::from_millis(40);
 const NOT_IBD_BLOCK_FETCH_INTERVAL: Duration = Duration::from_millis(200);
 
+use crossbeam_deque::{Injector, Worker};
+use std::iter;
+use std::thread;
+
+pub struct Work {
+    pub nc: Arc<dyn CKBProtocolContext + Sync>,
+    pub msg: packed::SyncMessageUnion,
+    pub peer_index: PeerIndex,
+}
+
 #[derive(Clone)]
 pub struct Synchronizer {
     chain: ChainController,
     pub shared: Arc<SyncShared>,
+    pub work_queue: Arc<Injector<Work>>,
 }
 
 impl Synchronizer {
     pub fn new(chain: ChainController, shared: Arc<SyncShared>) -> Synchronizer {
-        Synchronizer { chain, shared }
+        let synchronizer = Synchronizer {
+            chain,
+            shared,
+            work_queue: Arc::new(Injector::new()),
+        };
+        synchronizer.start_process();
+        synchronizer
     }
 
     pub fn shared(&self) -> &Arc<SyncShared> {
         &self.shared
+    }
+
+    pub fn push_work(&self, work: Work) {
+        self.work_queue.push(work);
+    }
+
+    pub fn start_process(&self) {
+        let num = num_cpus::get();
+        let workers: Vec<_> = (0..num).map(|_| Worker::new_fifo()).collect();
+
+        let stealers: Vec<_> = (0..num)
+            .map(|index| {
+                workers
+                    .iter()
+                    .enumerate()
+                    .skip_while(|(i, _)| *i == index)
+                    .map(|(_, w)| w.stealer())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        let workers: Vec<_> = workers.into_iter().zip(stealers.into_iter()).collect();
+        for (worker, stealers) in workers {
+            let synchronizer = self.clone();
+            let _thread = thread::Builder::new().spawn(move || loop {
+                // Pop a task from the local queue, if not empty.
+                let work = worker.pop().or_else(|| {
+                    // Otherwise, we need to look for a task elsewhere.
+                    iter::repeat_with(|| {
+                                // Try stealing a batch of tasks from the global queue.
+                                synchronizer.work_queue.steal_batch_and_pop(&worker)
+                                    // Or try stealing a task from one of the other threads.
+                                    .or_else(|| stealers.iter().map(|s| s.steal()).collect())
+                        })
+                        // Loop while no task was stolen and any steal operation needs to be retried.
+                        .find(|s| !s.is_retry())
+                        // Extract the stolen task, if there is one.
+                        .and_then(|s| s.success())
+                });
+
+                if let Some(Work {
+                    nc,
+                    msg,
+                    peer_index,
+                }) = work
+                {
+                    let start_time = Instant::now();
+                    synchronizer.process(nc.as_ref(), peer_index, msg.as_reader());
+                    debug!(
+                        "process message={}, peer={}, cost={:?}",
+                        msg.item_name(),
+                        peer_index,
+                        start_time.elapsed(),
+                    );
+                } else {
+                    thread::yield_now();
+                }
+            });
+        }
     }
 
     fn try_process<'r>(
@@ -450,14 +526,19 @@ impl CKBProtocolHandler for Synchronizer {
             scope.set_tag("p2p.message", msg.item_name());
         });
 
-        let start_time = Instant::now();
-        self.process(nc.as_ref(), peer_index, msg.as_reader());
-        debug!(
-            "process message={}, peer={}, cost={:?}",
-            msg.item_name(),
+        // let start_time = Instant::now();
+        self.push_work(Work {
+            nc,
             peer_index,
-            start_time.elapsed(),
-        );
+            msg,
+        });
+        // self.process(nc.as_ref(), peer_index, msg.as_reader());
+        // debug!(
+        //     "process message={}, peer={}, cost={:?}",
+        //     msg.item_name(),
+        //     peer_index,
+        //     start_time.elapsed(),
+        // );
     }
 
     fn connected(
