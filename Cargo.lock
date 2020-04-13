@@ -1088,6 +1088,7 @@ dependencies = [
  "ckb-error",
  "ckb-fixed-hash",
  "ckb-hash",
+ "ckb-logger",
  "ckb-occupied-capacity",
  "ckb-rational",
  "crossbeam-channel",

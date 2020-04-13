@@ -533,34 +533,92 @@ impl<'a, CS: ChainStore<'a>> ContextualBlockVerifier<'a, CS> {
             prepare_epoch_ext(&self.context, &parent)?
         };
 
+        let start_time = ::std::time::Instant::now();
         if !switch.disable_epoch() {
             EpochVerifier::new(&epoch_ext, block).verify()?;
         }
 
+        let transactions_len = block.transactions().len();
+        if transactions_len > 1 {
+            ckb_logger::info!(
+                "block {} txs {} EpochVerifier, cost={:?}",
+                block.header().number(),
+                transactions_len,
+                start_time.elapsed(),
+            );
+        }
+
+        let start_time = ::std::time::Instant::now();
         if !switch.disable_uncles() {
             let uncle_verifier_context = UncleVerifierContext::new(&self.context, &epoch_ext);
             UnclesVerifier::new(uncle_verifier_context, block).verify()?;
         }
+        if transactions_len > 1 {
+            ckb_logger::info!(
+                "block {} txs {} UnclesVerifier, cost={:?}",
+                block.header().number(),
+                transactions_len,
+                start_time.elapsed(),
+            );
+        }
 
+        let start_time = ::std::time::Instant::now();
         if !switch.disable_two_phase_commit() {
             TwoPhaseCommitVerifier::new(&self.context, block).verify()?;
         }
+        if transactions_len > 1 {
+            ckb_logger::info!(
+                "block {} txs {} TwoPhaseCommitVerifier, cost={:?}",
+                block.header().number(),
+                transactions_len,
+                start_time.elapsed(),
+            );
+        }
 
+        let start_time = ::std::time::Instant::now();
         if !switch.disable_daoheader() {
             DaoHeaderVerifier::new(&self.context, resolved, &parent, &block.header()).verify()?;
         }
+        if transactions_len > 1 {
+            ckb_logger::info!(
+                "block {} txs {} DaoHeaderVerifier, cost={:?}",
+                block.header().number(),
+                transactions_len,
+                start_time.elapsed(),
+            );
+        }
 
+        let start_time = ::std::time::Instant::now();
         if !switch.disable_reward() {
             RewardVerifier::new(&self.context, resolved, &parent).verify()?;
         }
+        if transactions_len > 1 {
+            ckb_logger::info!(
+                "block {} txs {} RewardVerifier, cost={:?}",
+                block.header().number(),
+                transactions_len,
+                start_time.elapsed(),
+            );
+        }
 
-        BlockTxsVerifier::new(
+        let start_time = ::std::time::Instant::now();
+        let ret = BlockTxsVerifier::new(
             &self.context,
             block.number(),
             block.epoch(),
             parent_hash,
             resolved,
         )
-        .verify(txs_verify_cache, executor)
+        .verify(txs_verify_cache, executor);
+        if transactions_len > 1 {
+            ckb_logger::info!(
+                "block {} txs {} BlockTxsVerifier, cost={:?}",
+                block.header().number(),
+                transactions_len,
+                start_time.elapsed(),
+            );
+        }
+
+        ret
     }
 }

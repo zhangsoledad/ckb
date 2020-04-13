@@ -414,6 +414,7 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
 
     // skip resolve input of cellbase
     if !transaction.is_cellbase() {
+        let start_time = ::std::time::Instant::now();
         for out_point in transaction.input_pts_iter() {
             if !current_inputs.insert(out_point.to_owned()) {
                 return Err(OutPointError::Dead(out_point).into());
@@ -422,10 +423,16 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
                 resolved_inputs.push(*cell_meta);
             }
         }
+        ckb_logger::info!(
+            "resolve transactions input, cost={:?}",
+            start_time.elapsed(),
+        );
     }
 
+    let start_time = ::std::time::Instant::now();
     for cell_dep in transaction.cell_deps_iter() {
         if cell_dep.dep_type() == DepType::DepGroup.into() {
+            ckb_logger::info!("resolve DepGroup {}", cell_dep);
             if let Some((dep_group, cell_deps)) =
                 resolve_dep_group(&cell_dep.out_point(), &mut resolve_cell)?
             {
@@ -433,9 +440,11 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
                 resolved_cell_deps.extend(cell_deps);
             }
         } else if let Some(cell_meta) = resolve_cell(&cell_dep.out_point(), true)? {
+            ckb_logger::info!("resolve cell {}", cell_dep);
             resolved_cell_deps.push(*cell_meta);
         }
     }
+    ckb_logger::info!("resolve transactions dep, cost={:?}", start_time.elapsed(),);
 
     for block_hash in transaction.header_deps_iter() {
         header_checker.check_valid(&block_hash)?;

@@ -208,9 +208,20 @@ impl ChainService {
         if txn_snapshot.block_exists(&block.header().hash()) {
             return Ok(false);
         }
+
+        let cost_metric = block.transactions().len() > 1;
+        let start_time = ::std::time::Instant::now();
         // non-contextual verify
         if !switch.disable_non_contextual() {
             self.non_contextual_verify(&block)?;
+        }
+        if cost_metric {
+            info!(
+                "block {} txs {} non_contextual_verify, cost={:?}",
+                block.header().number(),
+                block.transactions().len(),
+                start_time.elapsed(),
+            );
         }
 
         let mut total_difficulty = U256::zero();
@@ -295,7 +306,17 @@ impl ChainService {
             self.rollback(&fork, &db_txn)?;
             // update and verify chain root
             // MUST update index before reconcile_main_chain
+
+            let start_time = ::std::time::Instant::now();
             self.reconcile_main_chain(&db_txn, &mut fork, switch)?;
+            if cost_metric {
+                info!(
+                    "block {} txs {} reconcile_main_chain, cost={:?}",
+                    block.header().number(),
+                    block.transactions().len(),
+                    start_time.elapsed(),
+                );
+            }
 
             db_txn.insert_tip_header(&block.header())?;
             if new_epoch || fork.has_detached() {
@@ -372,6 +393,14 @@ impl ChainService {
             {
                 error!("notify new_uncle error {}", e);
             }
+        }
+        if cost_metric {
+            info!(
+                "block {} txs {} process, cost={:?}",
+                block.header().number(),
+                block.transactions().len(),
+                start_time.elapsed(),
+            );
         }
 
         metric!({
@@ -556,7 +585,7 @@ impl ChainService {
                             continue;
                         }
                     };
-
+                    let start_time = ::std::time::Instant::now();
                     let transactions = b.transactions();
                     let resolved = {
                         let txn_cell_provider = txn.cell_provider();
@@ -574,7 +603,11 @@ impl ChainService {
                             })
                             .collect::<Result<Vec<ResolvedTransaction>, _>>()
                     };
+                    if b.transactions().len() > 1 {
+                        info!("resolve transactions, cost={:?}", start_time.elapsed(),);
+                    }
 
+                    let start_time = ::std::time::Instant::now();
                     match resolved {
                         Ok(resolved) => {
                             match contextual_block_verifier.verify(
@@ -627,6 +660,9 @@ impl ChainService {
                             mut_ext.verified = Some(false);
                             txn.insert_block_ext(&b.header().hash(), &mut_ext)?;
                         }
+                    }
+                    if b.transactions().len() > 1 {
+                        info!("contextual_block_verifier, cost={:?}", start_time.elapsed(),);
                     }
                 } else {
                     let mut mut_ext = ext.clone();
