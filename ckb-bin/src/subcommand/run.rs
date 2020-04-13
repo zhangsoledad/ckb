@@ -42,6 +42,8 @@ pub fn run(args: RunArgs, version: Version) -> Result<(), ExitCode> {
     // Verify genesis every time starting node
     verify_genesis(&shared)?;
 
+    set_system_cell(&shared);
+
     ckb_memory_tracker::track_current_process(args.config.memory_tracker.interval);
 
     let chain_service = ChainService::new(shared.clone(), table);
@@ -166,6 +168,97 @@ fn verify_genesis(shared: &Shared) -> Result<(), ExitCode> {
             eprintln!("genesis error: {}", err);
             ExitCode::Config
         })
+}
+
+fn set_system_cell(shared: &Shared) {
+    use ckb_error::Error;
+    use ckb_store::ChainStore;
+    use std::collections::HashMap;
+
+    use ckb_types::{
+        core::{
+            cell::{resolve_dep_group, CellMeta, CellProvider, ResolvedDep, SYSTEM_CELL},
+            DepType,
+        },
+        packed::{CellDep, OutPoint},
+    };
+
+    let genesis = shared.consensus().genesis_block();
+    let system_cell_transaction = &genesis.transactions()[0];
+    let secp_cell_transaction = &genesis.transactions()[1];
+    let secp_code_dep = CellDep::new_builder()
+        .out_point(OutPoint::new(system_cell_transaction.hash(), 1))
+        .dep_type(DepType::Code.into())
+        .build();
+
+    let dao_dep = CellDep::new_builder()
+        .out_point(OutPoint::new(system_cell_transaction.hash(), 2))
+        .dep_type(DepType::Code.into())
+        .build();
+
+    let secp_data_dep = CellDep::new_builder()
+        .out_point(OutPoint::new(system_cell_transaction.hash(), 3))
+        .dep_type(DepType::Code.into())
+        .build();
+
+    let secp_group_dep = CellDep::new_builder()
+        .out_point(OutPoint::new(secp_cell_transaction.hash(), 0))
+        .dep_type(DepType::DepGroup.into())
+        .build();
+
+    let multi_sign_secp_group = CellDep::new_builder()
+        .out_point(OutPoint::new(secp_cell_transaction.hash(), 1))
+        .dep_type(DepType::DepGroup.into())
+        .build();
+
+    let mut cell_deps = HashMap::new();
+    let secp_code_dep_cell = shared
+        .store()
+        .cell_provider()
+        .cell_meta(&secp_code_dep.out_point(), true)
+        .unwrap()
+        .unwrap();
+    cell_deps.insert(secp_code_dep, ResolvedDep::Cell(secp_code_dep_cell));
+
+    let dao_dep_cell = shared
+        .store()
+        .cell_provider()
+        .cell_meta(&dao_dep.out_point(), true)
+        .unwrap()
+        .unwrap();
+    cell_deps.insert(dao_dep, ResolvedDep::Cell(dao_dep_cell));
+
+    let secp_data_dep_cell = shared
+        .store()
+        .cell_provider()
+        .cell_meta(&secp_data_dep.out_point(), true)
+        .unwrap()
+        .unwrap();
+    cell_deps.insert(secp_data_dep, ResolvedDep::Cell(secp_data_dep_cell));
+
+    let resolve_cell =
+        |out_point: &OutPoint, with_data: bool| -> Result<Option<Box<CellMeta>>, Error> {
+            shared
+                .store()
+                .cell_provider()
+                .cell_meta(out_point, with_data)
+        };
+
+    let secp_group_dep_cell = resolve_dep_group(&secp_group_dep.out_point(), resolve_cell)
+        .unwrap()
+        .unwrap();
+    cell_deps.insert(secp_group_dep, ResolvedDep::Group(secp_group_dep_cell));
+
+    let multi_sign_secp_group_cell =
+        resolve_dep_group(&multi_sign_secp_group.out_point(), resolve_cell)
+            .unwrap()
+            .unwrap();
+    cell_deps.insert(
+        multi_sign_secp_group,
+        ResolvedDep::Group(multi_sign_secp_group_cell),
+    );
+
+    SYSTEM_CELL.set(cell_deps).unwrap();
 }
 
 fn sanitize_block_assembler_config(

@@ -2,15 +2,24 @@ use crate::{
     bytes::Bytes,
     core::error::OutPointError,
     core::{BlockView, Capacity, DepType, TransactionInfo, TransactionView},
-    packed::{Byte32, CellOutput, OutPoint, OutPointVec},
+    packed::{Byte32, CellDep, CellOutput, OutPoint, OutPointVec},
     prelude::*,
 };
 use ckb_error::Error;
 use ckb_occupied_capacity::Result as CapacityResult;
+use once_cell::sync::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt;
 use std::hash::BuildHasher;
+
+#[derive(Debug)]
+pub enum ResolvedDep {
+    Cell(Box<CellMeta>),
+    Group((CellMeta, Vec<CellMeta>)),
+}
+
+pub static SYSTEM_CELL: OnceCell<HashMap<CellDep, ResolvedDep>> = OnceCell::new();
 
 #[derive(Clone, Eq, PartialEq, Default)]
 pub struct CellMeta {
@@ -164,6 +173,19 @@ pub struct ResolvedTransaction {
 
 pub trait CellProvider {
     fn cell(&self, out_point: &OutPoint, with_data: bool) -> CellStatus;
+
+    fn cell_meta(
+        &self,
+        out_point: &OutPoint,
+        with_data: bool,
+    ) -> Result<Option<Box<CellMeta>>, Error> {
+        let cell_status = self.cell(out_point, with_data);
+        match cell_status {
+            CellStatus::Dead => Err(OutPointError::Dead(out_point.clone()).into()),
+            CellStatus::Unknown => Ok(None),
+            CellStatus::Live(cell_meta) => Ok(Some(cell_meta)),
+        }
+    }
 }
 
 pub struct OverlayCellProvider<'a, A, B> {
@@ -351,7 +373,7 @@ fn parse_dep_group_data(slice: &[u8]) -> Result<OutPointVec, String> {
     }
 }
 
-fn resolve_dep_group<F: FnMut(&OutPoint, bool) -> Result<Option<Box<CellMeta>>, Error>>(
+pub fn resolve_dep_group<F: FnMut(&OutPoint, bool) -> Result<Option<Box<CellMeta>>, Error>>(
     out_point: &OutPoint,
     mut cell_resolver: F,
 ) -> Result<Option<(CellMeta, Vec<CellMeta>)>, Error> {
@@ -385,15 +407,17 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
     let (
         mut unknown_out_points,
         mut resolved_inputs,
-        mut resolved_cell_deps,
+        // mut resolved_cell_deps,
         mut resolved_dep_groups,
     ) = (
         Vec::new(),
         Vec::with_capacity(transaction.inputs().len()),
-        Vec::with_capacity(transaction.cell_deps().len()),
+        // Vec::with_capacity(transaction.cell_deps().len()),
         Vec::new(),
     );
+    let mut resolved_cell_deps: Vec<CellMeta> = Vec::with_capacity(transaction.cell_deps().len());
     let mut current_inputs = HashSet::new();
+
 
     let mut resolve_cell =
         |out_point: &OutPoint, with_data: bool| -> Result<Option<Box<CellMeta>>, Error> {
@@ -430,21 +454,35 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
     }
 
     let start_time = ::std::time::Instant::now();
+    let system_cell = SYSTEM_CELL.get().expect("SYSTEM_CELL is not initialized");
     for cell_dep in transaction.cell_deps_iter() {
-        if cell_dep.dep_type() == DepType::DepGroup.into() {
-            ckb_logger::info!("resolve DepGroup {}", cell_dep);
-            if let Some((dep_group, cell_deps)) =
-                resolve_dep_group(&cell_dep.out_point(), &mut resolve_cell)?
-            {
-                resolved_dep_groups.push(dep_group);
-                resolved_cell_deps.extend(cell_deps);
+        if let Some(resolved_dep) = system_cell.get(&cell_dep) {
+            match resolved_dep {
+                ResolvedDep::Cell(cell_meta) => resolved_cell_deps.push(*cell_meta.clone()),
+                ResolvedDep::Group((dep_group, cell_deps)) => {
+                    resolved_dep_groups.push(dep_group.clone());
+                    resolved_cell_deps.extend(cell_deps.clone());
+                }
             }
-        } else if let Some(cell_meta) = resolve_cell(&cell_dep.out_point(), true)? {
-            ckb_logger::info!("resolve cell {}", cell_dep);
-            resolved_cell_deps.push(*cell_meta);
+        } else {
+            ckb_logger::info!("resolve cache missing {}", cell_dep);
+            if cell_dep.dep_type() == DepType::DepGroup.into() {
+                ckb_logger::info!("resolve DepGroup {}", cell_dep);
+                if let Some((dep_group, cell_deps)) =
+                    resolve_dep_group(&cell_dep.out_point(), &mut resolve_cell)?
+                {
+                    resolved_dep_groups.push(dep_group);
+                    resolved_cell_deps.extend(cell_deps);
+                }
+            } else if let Some(cell_meta) = resolve_cell(&cell_dep.out_point(), true)? {
+                ckb_logger::info!("resolve cell {}", cell_dep);
+                resolved_cell_deps.push(*cell_meta);
+            }
         }
     }
-    ckb_logger::info!("resolve transactions dep, cost={:?}", start_time.elapsed(),);
+    if !transaction.is_cellbase() {
+        ckb_logger::info!("resolve transactions dep, cost={:?}", start_time.elapsed(),);
+    }
 
     for block_hash in transaction.header_deps_iter() {
         header_checker.check_valid(&block_hash)?;
