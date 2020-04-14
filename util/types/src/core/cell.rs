@@ -12,12 +12,16 @@ use std::collections::{HashMap, HashSet};
 use std::convert::TryInto;
 use std::fmt;
 use std::hash::BuildHasher;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug)]
 pub enum ResolvedDep {
     Cell(Box<CellMeta>),
     Group((CellMeta, Vec<CellMeta>)),
 }
+
+pub static IS_CELLBASE: AtomicU64 = AtomicU64::new(0);
+pub static ALL_INPUT: AtomicU64 = AtomicU64::new(0);
 
 pub static SYSTEM_CELL: OnceCell<HashMap<CellDep, ResolvedDep>> = OnceCell::new();
 
@@ -114,6 +118,13 @@ impl CellMeta {
             .as_ref()
             .map(TransactionInfo::is_cellbase)
             .unwrap_or(false)
+    }
+
+    pub fn block_number(&self) -> u64 {
+        self.transaction_info
+            .as_ref()
+            .map(TransactionInfo::block_number)
+            .unwrap_or(0)
     }
 
     pub fn capacity(&self) -> Capacity {
@@ -444,6 +455,20 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
                 return Err(OutPointError::Dead(out_point).into());
             }
             if let Some(cell_meta) = resolve_cell(&out_point, false)? {
+                let all = ALL_INPUT.fetch_add(1, Ordering::SeqCst);
+                ckb_logger::info!(
+                    "resolve transactions input {} is_cellbase {}",
+                    out_point,
+                    cell_meta.is_cellbase(),
+                );
+                if cell_meta.is_cellbase() {
+                    let is_cellbase = IS_CELLBASE.fetch_add(1, Ordering::SeqCst);
+                    ckb_logger::info!(
+                        "resolve percent {}/{}",
+                        is_cellbase,
+                        all,
+                    );
+                }
                 resolved_inputs.push(*cell_meta);
             }
         }

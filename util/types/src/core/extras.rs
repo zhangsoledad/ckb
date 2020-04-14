@@ -56,6 +56,10 @@ impl TransactionInfo {
         self.index == 0
     }
 
+    pub fn block_number(&self) -> BlockNumber {
+        self.block_number
+    }
+
     pub fn is_genesis(&self) -> bool {
         self.block_number == 0
     }
