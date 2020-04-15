@@ -17,11 +17,16 @@ use ckb_types::{
         BlockExt, BlockNumber, BlockView, EpochExt, EpochNumber, HeaderView, TransactionInfo,
         TransactionMeta, TransactionView, UncleBlockVecView,
     },
-    packed::{self, OutPoint},
+    packed::{self, OutPoint, CellOutput},
     prelude::*,
 };
 
 pub struct CellProviderWrapper<'a, S>(&'a S);
+
+use std::sync::atomic::{AtomicU64, Ordering};
+pub static CACHED: AtomicU64 = AtomicU64::new(0);
+pub static CELLBASE: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL: AtomicU64 = AtomicU64::new(0);
 
 pub trait ChainStore<'a>: Send + Sync + Sized {
     type Vector: AsRef<[u8]>;
@@ -251,7 +256,28 @@ pub trait ChainStore<'a>: Send + Sync + Sized {
         })
     }
 
+
+
     fn get_cell_meta(&'a self, tx_hash: &packed::Byte32, index: u32) -> Option<CellMeta> {
+        let total = TOTAL.fetch_add(1, Ordering::SeqCst);
+        if index == 0u32 {
+            let cellbase_c = CELLBASE.fetch_add(1, Ordering::SeqCst);
+            if let Some(cache) = self.cache() {
+                if let Some(data) = cache.cell_meta.lock().get(tx_hash) {
+                    let cached = CACHED.fetch_add(1, Ordering::SeqCst);
+                    ckb_logger::info!(
+                        "get_cell_meta cache hit {}/{}/{}",
+                        cached,
+                        cellbase_c,
+                        total
+                    );
+                    return Some(data.clone());
+                }
+            };
+        }
+
+        ckb_logger::info!("get_cell_meta ({}-{}) total {}", tx_hash, index, total);
+
         self.get_transaction_info_packed(&tx_hash)
             .and_then(|tx_info| {
                 self.get(COLUMN_BLOCK_BODY, tx_info.key().as_slice())

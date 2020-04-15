@@ -240,7 +240,6 @@ impl<'a> EmptyVerifier<'a> {
     }
 }
 
-
 use std::sync::atomic::{AtomicU64, Ordering};
 pub static COUNT: AtomicU64 = AtomicU64::new(0);
 pub static AGES: AtomicU64 = AtomicU64::new(0);
@@ -277,11 +276,7 @@ impl<'a> MaturityVerifier<'a> {
                         let age = self.block_number - info.block_number;
                         let ages = AGES.fetch_add(age, Ordering::SeqCst);
                         let count = COUNT.fetch_add(1, Ordering::SeqCst);
-                        let avg = if count != 0 {
-                            ages / count
-                        } else {
-                            0
-                        };
+                        let avg = if count != 0 { ages / count } else { 0 };
                         ckb_logger::info!(
                             "origin block_number {} current block_number {}, spend age: {} avg: {}",
                             info.block_number,
@@ -292,10 +287,7 @@ impl<'a> MaturityVerifier<'a> {
 
                         if age > MAX.load(Ordering::SeqCst) {
                             MAX.store(age, Ordering::SeqCst);
-                            ckb_logger::info!(
-                                "age max: {}",
-                                age,
-                            );
+                            ckb_logger::info!("age max: {}", age,);
                         }
                         let threshold =
                             self.cellbase_maturity.to_rational() + info.block_epoch.to_rational();

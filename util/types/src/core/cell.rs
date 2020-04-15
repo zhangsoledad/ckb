@@ -429,7 +429,6 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
     let mut resolved_cell_deps: Vec<CellMeta> = Vec::with_capacity(transaction.cell_deps().len());
     let mut current_inputs = HashSet::new();
 
-
     let mut resolve_cell =
         |out_point: &OutPoint, with_data: bool| -> Result<Option<Box<CellMeta>>, Error> {
             if seen_inputs.contains(out_point) {
@@ -463,11 +462,7 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
                 );
                 if cell_meta.is_cellbase() {
                     let is_cellbase = IS_CELLBASE.fetch_add(1, Ordering::SeqCst);
-                    ckb_logger::info!(
-                        "resolve percent {}/{}",
-                        is_cellbase,
-                        all,
-                    );
+                    ckb_logger::info!("resolve percent {}/{}", is_cellbase, all,);
                 }
                 resolved_inputs.push(*cell_meta);
             }

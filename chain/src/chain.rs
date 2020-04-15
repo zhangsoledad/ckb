@@ -8,11 +8,11 @@ use ckb_stop_handler::{SignalSender, StopHandler};
 use ckb_store::{ChainStore, StoreTransaction};
 use ckb_types::{
     core::{
-        cell::{resolve_transaction, BlockCellProvider, OverlayCellProvider, ResolvedTransaction},
+        cell::{resolve_transaction, BlockCellProvider, OverlayCellProvider, ResolvedTransaction, CellMeta},
         service::{Request, DEFAULT_CHANNEL_SIZE, SIGNAL_CHANNEL_SIZE},
-        BlockExt, BlockNumber, BlockView,
+        BlockExt, BlockNumber, BlockView, TransactionInfo
     },
-    packed::{Byte32, ProposalShortId},
+    packed::{Byte32, ProposalShortId, CellOutput, OutPoint},
     U256,
 };
 use ckb_verification::InvalidParentError;
