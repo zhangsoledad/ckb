@@ -595,7 +595,6 @@ version = "0.37.0-pre"
 dependencies = [
  "ckb-app-config",
  "ckb-chain",
- "ckb-chain-spec",
  "ckb-db",
  "ckb-db-migration",
  "ckb-jsonrpc-types",
