@@ -12,12 +12,14 @@ mod extras;
 mod reward;
 mod transaction_meta;
 mod views;
+mod plain_hash;
 pub use advanced_builders::{BlockBuilder, HeaderBuilder, TransactionBuilder};
 pub use blockchain::{DepType, ScriptHashType};
 pub use extras::{BlockExt, EpochExt, EpochNumberWithFraction, TransactionInfo};
 pub use reward::{BlockEconomicState, BlockIssuance, BlockReward, MinerReward};
 pub use transaction_meta::{TransactionMeta, TransactionMetaBuilder};
 pub use views::{BlockView, HeaderView, TransactionView, UncleBlockVecView, UncleBlockView};
+pub use plain_hash::PlainHashMap;
 
 pub use ckb_occupied_capacity::{capacity_bytes, Capacity, Ratio, Result as CapacityResult};
 pub type PublicKey = ckb_fixed_hash::H512;
