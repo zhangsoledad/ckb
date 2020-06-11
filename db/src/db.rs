@@ -5,10 +5,11 @@ use ckb_app_config::DBConfig;
 use ckb_logger::{info, warn};
 use rocksdb::ops::{
     CreateCF, DropCF, GetColumnFamilys, GetPinned, GetPinnedCF, IterateCF, OpenCF, Put, SetOptions,
+    WriteOps,
 };
 use rocksdb::{
     ffi, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice, FullOptions, IteratorMode,
-    OptimisticTransactionDB, OptimisticTransactionOptions, Options, WriteOptions,
+    OptimisticTransactionDB, OptimisticTransactionOptions, Options, WriteBatch, WriteOptions,
 };
 use std::sync::Arc;
 
@@ -177,16 +178,6 @@ impl RocksDB {
 
     pub fn inner(&self) -> Arc<OptimisticTransactionDB> {
         Arc::clone(&self.inner)
-    }
-
-    pub fn delete_file_in_range<K>(&self, col: Col, start_key: K, end_key: K) -> Result<()>
-    where
-        K: AsRef<[u8]>,
-    {
-        let cf = cf_handle(&self.inner, col)?;
-        self.inner
-            .delete_file_in_range_cf(cf, start_key, end_key)
-            .map_err(internal_error)
     }
 
     pub fn batch_delete<K>(
