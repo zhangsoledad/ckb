@@ -234,6 +234,7 @@ impl SharedBuilder {
         migrations.add_migration(Box::new(DefaultMigration::new(INIT_DB_VERSION)));
         migrations.add_migration(Box::new(migrations::ChangeMoleculeTableToStruct));
         migrations.add_migration(Box::new(migrations::CellMigration));
+        migrations.add_migration(Box::new(migrations::FreezerMigration));
 
         SharedBuilder {
             db,
