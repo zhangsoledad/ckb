@@ -265,6 +265,7 @@ mod tests {
                 opts
             },
             options_file: None,
+            ..Default::default()
         };
         RocksDB::open(&config, 2); // no panic
     }
@@ -279,6 +280,7 @@ mod tests {
             path: tmp_dir.as_ref().to_path_buf(),
             options: HashMap::new(),
             options_file: None,
+            ..Default::default()
         };
         RocksDB::open(&config, 2); // no panic
     }
@@ -298,6 +300,7 @@ mod tests {
                 opts
             },
             options_file: None,
+            ..Default::default()
         };
         RocksDB::open(&config, 2); // panic
     }
