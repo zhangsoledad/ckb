@@ -595,6 +595,7 @@ dependencies = [
  "ckb-types",
  "crossbeam-channel 0.3.9",
  "fs2",
+ "tempfile",
 ]
 
 [[package]]
