@@ -456,7 +456,6 @@ fn print_document(params: Option<&Vec<(String, Value)>>, result: Option<&Vec<(St
 }
 
 #[test]
-#[ignore]
 fn test_rpc() {
     let (shared, _chain_controller, server) = setup_node(TARGET_HEIGHT);
     let client = reqwest::Client::new();
