@@ -9,8 +9,6 @@ pub struct Config {
     #[serde(default)]
     pub options: HashMap<String, String>,
     pub options_file: Option<PathBuf>,
-    #[serde(default)]
-    pub ancient: PathBuf,
 }
 
 impl Config {

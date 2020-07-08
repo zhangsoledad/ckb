@@ -294,25 +294,10 @@ pub struct SharedBuilder {
     migrations: Migrations,
 }
 
-impl Default for SharedBuilder {
-    fn default() -> Self {
-        SharedBuilder {
-            db: RocksDB::open_tmp(COLUMNS),
-            ancient_path: None,
-            consensus: None,
-            tx_pool_config: None,
-            notify_config: None,
-            store_config: None,
-            block_assembler_config: None,
-            migrations: Migrations::default(),
-        }
-    }
-}
-
 const INIT_DB_VERSION: &str = "20191127135521";
 
 impl SharedBuilder {
-    pub fn with_db_config(config: &DBConfig) -> Self {
+    pub fn new(config: &DBConfig, ancient: Option<PathBuf>) -> Self {
         let db = RocksDB::open(config, COLUMNS);
         let mut migrations = Migrations::default();
         migrations.add_migration(Box::new(DefaultMigration::new(INIT_DB_VERSION)));
@@ -322,13 +307,26 @@ impl SharedBuilder {
 
         SharedBuilder {
             db,
-            ancient_path: Some(config.ancient.to_path_buf()),
+            ancient_path: ancient,
             consensus: None,
             tx_pool_config: None,
             notify_config: None,
             store_config: None,
             block_assembler_config: None,
             migrations,
+        }
+    }
+
+    pub fn with_temp_db() -> Self {
+        SharedBuilder {
+            db: RocksDB::open_tmp(COLUMNS),
+            ancient_path: None,
+            consensus: None,
+            tx_pool_config: None,
+            notify_config: None,
+            store_config: None,
+            block_assembler_config: None,
+            migrations: Migrations::default(),
         }
     }
 }

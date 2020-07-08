@@ -2,18 +2,18 @@ use crate::cache::StoreCache;
 use crate::cell::attach_block_cell;
 use crate::store::ChainStore;
 use crate::transaction::StoreTransaction;
+use crate::write_batch::StoreWriteBatch;
 use crate::StoreSnapshot;
 use ckb_app_config::StoreConfig;
 use ckb_chain_spec::consensus::Consensus;
 use ckb_db::{
     iter::{DBIter, DBIterator, IteratorMode},
-    Col, DBPinnableSlice, Direction, ReadOptions, RocksDB, WriteBatch,
+    Col, DBPinnableSlice, RocksDB,
 };
 use ckb_error::Error;
 use ckb_freezer::Freezer;
 use ckb_types::core::BlockExt;
 use std::sync::Arc;
-use std::time;
 
 #[derive(Clone)]
 pub struct ChainDB {
@@ -76,6 +76,12 @@ impl ChainDB {
             inner: self.db.transaction(),
             freezer: self.freezer.clone(),
             cache: Arc::clone(&self.cache),
+        }
+    }
+
+    pub fn new_write_batch(&self) -> StoreWriteBatch {
+        StoreWriteBatch {
+            inner: self.db.new_write_batch(),
         }
     }
 

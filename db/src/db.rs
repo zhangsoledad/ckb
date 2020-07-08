@@ -1,5 +1,6 @@
 use crate::snapshot::RocksDBSnapshot;
 use crate::transaction::RocksDBTransaction;
+use crate::write_batch::RocksDBWriteBatch;
 use crate::{internal_error, Col, Result};
 use ckb_app_config::DBConfig;
 use ckb_logger::{info, warn};
@@ -126,7 +127,7 @@ impl RocksDB {
     }
 
     pub fn get_pinned(&self, col: Col, key: &[u8]) -> Result<Option<DBPinnableSlice>> {
-        let cf = self.cf_handle(col)?;
+        let cf = cf_handle(&self.inner, col)?;
         self.inner.get_pinned_cf(cf, &key).map_err(internal_error)
     }
 
@@ -146,7 +147,7 @@ impl RocksDB {
     where
         F: FnMut(&[u8], &[u8]) -> Result<()>,
     {
-        let cf = self.cf_handle(col)?;
+        let cf = cf_handle(&self.inner, col)?;
         let iter = self
             .inner
             .full_iterator_cf(cf, IteratorMode::Start)
@@ -169,6 +170,13 @@ impl RocksDB {
         }
     }
 
+    pub fn new_write_batch(&self) -> RocksDBWriteBatch {
+        RocksDBWriteBatch {
+            db: Arc::clone(&self.inner),
+            inner: WriteBatch::default(),
+        }
+    }
+
     pub fn get_snapshot(&self) -> RocksDBSnapshot {
         unsafe {
             let snapshot = ffi::rocksdb_create_snapshot(self.inner.base_db_ptr());
@@ -180,32 +188,8 @@ impl RocksDB {
         Arc::clone(&self.inner)
     }
 
-    pub fn batch_delete<K>(
-        &self,
-        col: Col,
-        wb: &mut WriteBatch,
-        keys: impl Iterator<Item = K>,
-    ) -> Result<()>
-    where
-        K: AsRef<[u8]>,
-    {
-        let cf = self.cf_handle(col)?;
-        for key in keys {
-            wb.delete_cf(cf, key).map_err(internal_error)?;
-            if wb.size_in_bytes() >= MAX_DELETE_BATCH_SIZE {
-                self.write_batch(&wb)?;
-                wb.clear().map_err(internal_error)?;
-            }
-        }
-
-        if !wb.is_empty() {
-            self.write_batch(&wb)?;
-        }
-        Ok(())
-    }
-
-    pub fn write_batch(&self, batch: &WriteBatch) -> Result<()> {
-        self.inner.write(batch).map_err(internal_error)
+    pub fn write(&self, batch: &RocksDBWriteBatch) -> Result<()> {
+        self.inner.write(&batch.inner).map_err(internal_error)
     }
 
     pub fn create_cf(&mut self, col: Col) -> Result<()> {
@@ -219,10 +203,6 @@ impl RocksDB {
         let inner = Arc::get_mut(&mut self.inner)
             .ok_or_else(|| internal_error("drop_cf get_mut failed"))?;
         inner.drop_cf(col).map_err(internal_error)
-    }
-
-    pub fn cf_handle(&self, col: Col) -> Result<&ColumnFamily> {
-        cf_handle(&self.inner, col)
     }
 }
 
