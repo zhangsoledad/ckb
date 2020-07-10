@@ -1025,6 +1025,7 @@ dependencies = [
  "ckb-types",
  "ckb-verification",
  "crossbeam-channel 0.3.9",
+ "indicatif",
 ]
 
 [[package]]

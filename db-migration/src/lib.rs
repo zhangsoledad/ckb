@@ -74,6 +74,7 @@ impl Migrations {
                     db.put_default(VERSION_KEY, m.version()).map_err(|err| {
                         internal_error(format!("failed to migrate the database: {}", err))
                     })?;
+                    info!("Finish migration {}", m.version());
                 }
                 mpb.join_and_clear().expect("MultiProgress join");
                 Ok(db)
