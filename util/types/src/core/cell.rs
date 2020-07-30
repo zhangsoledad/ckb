@@ -422,13 +422,7 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
     cell_provider: &CP,
     header_checker: &HC,
 ) -> Result<ResolvedTransaction, Error> {
-    let (
-        mut unknown_out_points,
-        mut resolved_inputs,
-        mut resolved_cell_deps,
-        mut resolved_dep_groups,
-    ) = (
-        Vec::new(),
+    let (mut resolved_inputs, mut resolved_cell_deps, mut resolved_dep_groups) = (
         Vec::with_capacity(transaction.inputs().len()),
         Vec::with_capacity(transaction.cell_deps().len()),
         Vec::new(),
@@ -444,10 +438,7 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
             let cell_status = cell_provider.cell(out_point, with_data);
             match cell_status {
                 CellStatus::Dead => Err(OutPointError::Dead(out_point.clone()).into()),
-                CellStatus::Unknown => {
-                    unknown_out_points.push(out_point.clone());
-                    Ok(None)
-                }
+                CellStatus::Unknown => Err(OutPointError::Unknown(out_point.clone()).into()),
                 CellStatus::Live(cell_meta) => Ok(Some(cell_meta)),
             }
         };
@@ -475,17 +466,13 @@ pub fn resolve_transaction<CP: CellProvider, HC: HeaderChecker, S: BuildHasher>(
         header_checker.check_valid(&block_hash)?;
     }
 
-    if !unknown_out_points.is_empty() {
-        Err(OutPointError::Unknown(unknown_out_points).into())
-    } else {
-        seen_inputs.extend(current_inputs);
-        Ok(ResolvedTransaction {
-            transaction,
-            resolved_inputs,
-            resolved_cell_deps,
-            resolved_dep_groups,
-        })
-    }
+    seen_inputs.extend(current_inputs);
+    Ok(ResolvedTransaction {
+        transaction,
+        resolved_inputs,
+        resolved_cell_deps,
+        resolved_dep_groups,
+    })
 }
 
 fn resolve_transaction_deps_with_system_cell_cache<
@@ -834,7 +821,7 @@ mod tests {
         );
         assert_error_eq!(
             result.unwrap_err(),
-            OutPointError::Unknown(vec![op_unknown]),
+            OutPointError::Unknown(op_unknown),
         );
     }
 
