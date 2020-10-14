@@ -50,7 +50,6 @@ pub struct Logger {
     extra_loggers: sync::Arc<RwLock<HashMap<String, ExtraLogger>>>,
 }
 
-/// TODO(doc): @yangby-cryptape
 #[derive(Debug)]
 struct MainLogger {
     file_path: PathBuf,
@@ -60,7 +59,6 @@ struct MainLogger {
     color: bool,
 }
 
-/// TODO(doc): @yangby-cryptape
 #[derive(Debug)]
 struct ExtraLogger {
     filter: Filter,
