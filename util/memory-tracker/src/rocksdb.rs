@@ -1,4 +1,3 @@
-//! TODO(doc): @yangby-cryptape
 use ckb_db::internal::ops::{GetColumnFamilys, GetProperty, GetPropertyCF};
 use ckb_metrics::metrics;
 
