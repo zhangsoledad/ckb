@@ -330,7 +330,6 @@ impl BlockBuilder {
         self
     }
 
-    /// TODO(doc): @yangby-cryptape
     fn build_internal(self, reset_header: bool) -> core::BlockView {
         let Self {
             header,
