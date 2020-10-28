@@ -49,7 +49,6 @@ impl Drop for ChainController {
 }
 
 impl ChainController {
-
     /// Inserts the block into database.
     ///
     /// Expects the block's header to be valid and already verified.
