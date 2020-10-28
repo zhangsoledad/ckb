@@ -2,7 +2,7 @@
 //!
 //! This Library contains the `Chain Service` implement:
 //!
-//! - [Chain](chain::chain::Chain) represent a struct which
+//! - [ChainService](chain::chain::ChainService) represent a struct which implement `ChainService`
 
 pub mod chain;
 pub mod switch;
