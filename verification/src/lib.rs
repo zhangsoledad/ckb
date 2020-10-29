@@ -1,4 +1,7 @@
-//! TODO(doc): @zhangsoledad
+//! CKB verification
+//!
+//! This crate implements CKB verification by newtypes abstraction struct
+
 #[macro_use]
 extern crate enum_display_derive;
 
@@ -31,15 +34,16 @@ pub use crate::transaction_verifier::{
     SinceMetric, TimeRelativeTransactionVerifier, TransactionVerifier,
 };
 
-/// TODO(doc): @zhangsoledad
+/// Maximum amount of time that a block timestamp is allowed to exceed the
+/// current time before the block will be accepted.
 pub const ALLOWED_FUTURE_BLOCKTIME: u64 = 15 * 1000; // 15 Second
 
 pub(crate) const LOG_TARGET: &str = "ckb_chain";
 
-/// TODO(doc): @zhangsoledad
+/// Trait for verification
 pub trait Verifier {
-    /// TODO(doc): @zhangsoledad
+    /// The verification associated target
     type Target;
-    /// TODO(doc): @zhangsoledad
+    /// The Interface for verification
     fn verify(&self, target: &Self::Target) -> Result<(), ckb_error::Error>;
 }
