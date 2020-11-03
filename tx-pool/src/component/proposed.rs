@@ -126,6 +126,10 @@ impl ProposedPool {
         self.inner.get(id)
     }
 
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a ProposalShortId, &'a TxEntry)> {
+        self.inner.iter()
+    }
+
     pub(crate) fn get_tx(&self, id: &ProposalShortId) -> Option<&TransactionView> {
         self.get(id).map(|x| &x.transaction)
     }
