@@ -224,33 +224,36 @@ impl Shared {
     }
 
     /// Spawn freeze background thread that periodically checks and moves ancient data from the kv database into the freezer.
-    pub fn spawn_freeze(&self) -> FreezerClose {
-        let (signal_sender, signal_receiver) =
-            ckb_channel::bounded::<()>(service::SIGNAL_CHANNEL_SIZE);
-        let shared = self.clone();
-        let thread = thread::Builder::new()
-            .spawn(move || loop {
-                match signal_receiver.recv_timeout(FREEZER_INTERVAL) {
-                    Err(_) => {
-                        if let Err(e) = shared.freeze() {
-                            ckb_logger::error!("Freezer error {}", e);
+    pub fn spawn_freeze(&self) -> Option<FreezerClose> {
+        if let Some(freezer) = self.store.freezer() {
+            ckb_logger::info!("Freezer enable");
+            let (signal_sender, signal_receiver) =
+                ckb_channel::bounded::<()>(service::SIGNAL_CHANNEL_SIZE);
+            let shared = self.clone();
+            let thread = thread::Builder::new()
+                .spawn(move || loop {
+                    match signal_receiver.recv_timeout(FREEZER_INTERVAL) {
+                        Err(_) => {
+                            if let Err(e) = shared.freeze() {
+                                ckb_logger::error!("Freezer error {}", e);
+                                break;
+                            }
+                        }
+                        Ok(_) => {
+                            ckb_logger::info!("Freezer closing");
                             break;
                         }
                     }
-                    Ok(_) => {
-                        ckb_logger::info!("Freezer closing");
-                        break;
-                    }
-                }
-            })
-            .expect("Start FreezerService failed");
+                })
+                .expect("Start FreezerService failed");
 
-        let stop = StopHandler::new(SignalSender::Crossbeam(signal_sender), Some(thread));
-        let freezer = self.store.freezer().expect("freezer inited");
-        FreezerClose {
-            stopped: Arc::clone(&freezer.stopped),
-            stop,
+            let stop = StopHandler::new(SignalSender::Crossbeam(signal_sender), Some(thread));
+            return Some(FreezerClose {
+                stopped: Arc::clone(&freezer.stopped),
+                stop,
+            });
         }
+        None
     }
 
     fn freeze(&self) -> Result<(), Error> {
@@ -534,8 +537,8 @@ impl SharedBuilder {
         let notify_config = self.notify_config.unwrap_or_else(Default::default);
         let store_config = self.store_config.unwrap_or_else(Default::default);
         let db = self.migrations.migrate(self.db)?;
-        let store = if let Some(path) = self.ancient_path {
-            let freezer = Freezer::open(path)?;
+        let store = if store_config.freezer_enable && self.ancient_path.is_some() {
+            let freezer = Freezer::open(self.ancient_path.expect("exist checked"))?;
             ChainDB::new_with_freezer(db, freezer, store_config)
         } else {
             ChainDB::new(db, store_config)
