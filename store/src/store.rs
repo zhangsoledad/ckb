@@ -1,6 +1,6 @@
 use crate::cache::StoreCache;
 use ckb_chain_spec::consensus::Consensus;
-use ckb_db::iter::{DBIter, Direction, IteratorMode};
+use ckb_db::{iter::{DBIter, Direction, IteratorMode}, ReadOptions};
 use ckb_db_schema::{
     Col, COLUMN_BLOCK_BODY, COLUMN_BLOCK_EPOCH, COLUMN_BLOCK_EXT, COLUMN_BLOCK_HEADER,
     COLUMN_BLOCK_PROPOSAL_IDS, COLUMN_BLOCK_UNCLE, COLUMN_CELL, COLUMN_CELL_DATA, COLUMN_EPOCH,
@@ -33,6 +33,8 @@ pub trait ChainStore<'a>: Send + Sync + Sized {
     fn get(&'a self, col: Col, key: &[u8]) -> Option<Self::Vector>;
     /// TODO(doc): @quake
     fn get_iter(&self, col: Col, mode: IteratorMode) -> DBIter;
+
+    fn get_iter_opt(&self, col: Col, mode: IteratorMode, readopts: &ReadOptions) -> DBIter;
     /// TODO(doc): @quake
     fn cell_provider(&self) -> CellProviderWrapper<Self> {
         CellProviderWrapper(self)
@@ -84,9 +86,24 @@ pub trait ChainStore<'a>: Send + Sync + Sized {
     /// Get block body by block header hash
     fn get_block_body(&'a self, hash: &packed::Byte32) -> Vec<TransactionView> {
         let prefix = hash.as_slice();
-        self.get_iter(
+
+        let upper_bound = packed::TransactionKey::new_builder()
+            .block_hash(hash.clone())
+            .index(10000u32.pack())
+            .build();
+
+        let lower_bound = packed::TransactionKey::new_builder()
+            .block_hash(hash.clone())
+            .index(0u32.pack())
+            .build();
+
+        let mut opts = ReadOptions::default();
+        opts.set_iterate_lower_bound(lower_bound.as_slice());
+        opts.set_iterate_upper_bound(upper_bound.as_slice());
+        self.get_iter_opt(
             COLUMN_BLOCK_BODY,
             IteratorMode::From(prefix, Direction::Forward),
+            &opts,
         )
         .take_while(|(key, _)| key.starts_with(prefix))
         .map(|(_key, value)| {

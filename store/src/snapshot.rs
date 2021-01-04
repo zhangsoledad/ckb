@@ -2,7 +2,7 @@ use crate::cache::StoreCache;
 use crate::store::ChainStore;
 use ckb_db::{
     iter::{DBIter, DBIterator, IteratorMode},
-    DBPinnableSlice, RocksDBSnapshot,
+    DBPinnableSlice, RocksDBSnapshot, ReadOptions
 };
 use ckb_db_schema::Col;
 use ckb_freezer::Freezer;
@@ -35,6 +35,12 @@ impl<'a> ChainStore<'a> for StoreSnapshot {
     fn get_iter(&self, col: Col, mode: IteratorMode) -> DBIter {
         self.inner
             .iter(col, mode)
+            .expect("db operation should be ok")
+    }
+
+    fn get_iter_opt(&self, col: Col, mode: IteratorMode, readopts: &ReadOptions) -> DBIter {
+        self.inner
+            .iter_opt(col, mode, readopts)
             .expect("db operation should be ok")
     }
 }

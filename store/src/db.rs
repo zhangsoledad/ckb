@@ -8,7 +8,7 @@ use ckb_app_config::StoreConfig;
 use ckb_chain_spec::consensus::Consensus;
 use ckb_db::{
     iter::{DBIter, DBIterator, IteratorMode},
-    DBPinnableSlice, RocksDB,
+    DBPinnableSlice, ReadOptions, RocksDB,
 };
 use ckb_db_schema::{Col, CHAIN_SPEC_HASH_KEY};
 use ckb_error::Error;
@@ -43,6 +43,12 @@ impl<'a> ChainStore<'a> for ChainDB {
 
     fn get_iter(&self, col: Col, mode: IteratorMode) -> DBIter {
         self.db.iter(col, mode).expect("db operation should be ok")
+    }
+
+    fn get_iter_opt(&self, col: Col, mode: IteratorMode, readopts: &ReadOptions) -> DBIter {
+        self.db
+            .iter_opt(col, mode, readopts)
+            .expect("db operation should be ok")
     }
 }
 

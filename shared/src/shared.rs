@@ -30,7 +30,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-const FREEZER_INTERVAL: Duration = Duration::from_secs(60);
+const FREEZER_INTERVAL: Duration = Duration::from_secs(1);
 const THRESHOLD_EPOCH: EpochNumber = 2;
 const MAX_FREEZE_LIMIT: BlockNumber = 30_000;
 
@@ -261,10 +261,17 @@ impl Shared {
         let snapshot = self.snapshot();
         let current_epoch = snapshot.epoch_ext().number();
 
-        ckb_logger::trace!("freezer current_epoch {}", current_epoch);
+        let frozen_number = freezer.number();
+        let now = std::time::Instant::now();
+
+        ckb_logger::info!(
+            "freezer current_epoch {} frozen_number {}",
+            current_epoch,
+            frozen_number
+        );
 
         if current_epoch <= THRESHOLD_EPOCH {
-            ckb_logger::trace!("freezer loaf");
+            ckb_logger::info!("freezer loaf");
             return Ok(());
         }
 
@@ -274,8 +281,6 @@ impl Shared {
             .expect("get_epoch_ext")
             .last_block_hash_in_previous_epoch();
 
-        let frozen_number = freezer.number();
-
         let threshold = cmp::min(
             snapshot
                 .get_block_number(&limit_block_hash)
@@ -283,10 +288,11 @@ impl Shared {
             frozen_number + MAX_FREEZE_LIMIT,
         );
 
-        let get_unfrozen_block = |number: BlockNumber| {
-            self.store()
+        let store = self.store();
+        let get_unfrozen_block = move |number: BlockNumber| {
+            store
                 .get_block_hash(number)
-                .and_then(|hash| self.store().get_unfrozen_block(&hash))
+                .and_then(|hash| store.get_unfrozen_block(&hash))
         };
 
         let ret = freezer.freeze(threshold, get_unfrozen_block)?;
@@ -294,7 +300,7 @@ impl Shared {
         // Wipe out frozen data
         self.wipe_out_frozen_data(&snapshot, ret)?;
 
-        ckb_logger::trace!("freezer finish");
+        ckb_logger::info!("freezer finish cost: {}", now.elapsed().as_millis());
 
         Ok(())
     }

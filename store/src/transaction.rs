@@ -2,7 +2,7 @@ use crate::cache::StoreCache;
 use crate::store::ChainStore;
 use ckb_db::{
     iter::{DBIter, DBIterator, IteratorMode},
-    DBVector, RocksDBTransaction, RocksDBTransactionSnapshot,
+    DBVector, RocksDBTransaction, RocksDBTransactionSnapshot, ReadOptions
 };
 use ckb_db_schema::{
     Col, COLUMN_BLOCK_BODY, COLUMN_BLOCK_EPOCH, COLUMN_BLOCK_EXT, COLUMN_BLOCK_HEADER,
@@ -46,6 +46,12 @@ impl<'a> ChainStore<'a> for StoreTransaction {
             .iter(col, mode)
             .expect("db operation should be ok")
     }
+
+    fn get_iter_opt(&self, col: Col, mode: IteratorMode, readopts: &ReadOptions) -> DBIter {
+        self.inner
+            .iter_opt(col, mode, readopts)
+            .expect("db operation should be ok")
+    }
 }
 
 pub struct StoreTransactionSnapshot<'a> {
@@ -72,6 +78,13 @@ impl<'a> ChainStore<'a> for StoreTransactionSnapshot<'a> {
     fn get_iter(&self, col: Col, mode: IteratorMode) -> DBIter {
         self.inner
             .iter(col, mode)
+            .expect("db operation should be ok")
+    }
+
+
+    fn get_iter_opt(&self, col: Col, mode: IteratorMode, readopts: &ReadOptions) -> DBIter {
+        self.inner
+            .iter_opt(col, mode, readopts)
             .expect("db operation should be ok")
     }
 }

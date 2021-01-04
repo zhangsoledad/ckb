@@ -79,8 +79,11 @@ impl Freezer {
         let number = self.number();
         let mut guard = self.inner.lock();
         let mut ret = Vec::with_capacity(threshold.saturating_sub(number) as usize);
-        ckb_logger::trace!("freezer freeze start {} threshold {}", number, threshold);
+        ckb_logger::info!("freezer freeze start {} threshold {}", number, threshold);
 
+        let mut now1 = std::time::Instant::now();
+        let mut now2 = std::time::Instant::now();
+        let mut size = 0;
         for number in number..threshold {
             if self.stopped.load(Ordering::SeqCst) {
                 guard.files.sync_all().map_err(internal_error)?;
@@ -88,6 +91,14 @@ impl Freezer {
             }
 
             if let Some(block) = get_block_by_number(number) {
+                if (number % 1000) == 0 {
+                    ckb_logger::info!(
+                        "[freezer] get_block_by_number cost:{}",
+                        now2.elapsed().as_millis()
+                    );
+                    now2 = std::time::Instant::now();
+                }
+
                 if let Some(ref header) = guard.tip {
                     if header.hash() != block.header().parent_hash() {
                         return Err(internal_error(format!(
@@ -98,6 +109,7 @@ impl Freezer {
                     }
                 }
                 let raw_block = block.data();
+                size += raw_block.as_slice().len();
                 guard
                     .files
                     .append(number, raw_block.as_slice())
@@ -108,7 +120,16 @@ impl Freezer {
                     block.transactions().len() as u32,
                 ));
                 guard.tip = Some(block.header());
-                ckb_logger::trace!("freezer block append {}", number);
+                if (number % 1000) == 0 {
+                    ckb_logger::info!(
+                        "freezer block append {} cost:{} size:{}",
+                        number,
+                        now1.elapsed().as_millis(),
+                        size
+                    );
+                    now1 = std::time::Instant::now();
+                    size = 0;
+                }
             } else {
                 ckb_logger::error!("freezer block missing {}", number);
                 break;

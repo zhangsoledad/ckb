@@ -4,7 +4,7 @@ use arc_swap::{ArcSwap, Guard};
 use ckb_chain_spec::consensus::Consensus;
 use ckb_db::{
     iter::{DBIter, IteratorMode},
-    DBPinnableSlice,
+    DBPinnableSlice, ReadOptions
 };
 use ckb_db_schema::Col;
 use ckb_error::Error;
@@ -164,6 +164,10 @@ impl<'a> ChainStore<'a> for Snapshot {
 
     fn get_iter(&self, col: Col, mode: IteratorMode) -> DBIter {
         self.store.get_iter(col, mode)
+    }
+
+    fn get_iter_opt(&self, col: Col, mode: IteratorMode, readopts: &ReadOptions) -> DBIter {
+        self.store.get_iter_opt(col, mode, readopts)
     }
 
     fn get_tip_header(&self) -> Option<HeaderView> {
