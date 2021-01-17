@@ -1,11 +1,14 @@
 use crate::cache::StoreCache;
 use ckb_chain_spec::consensus::Consensus;
-use ckb_db::{iter::{DBIter, Direction, IteratorMode}, ReadOptions};
+use ckb_db::{
+    iter::{DBIter, Direction, IteratorMode},
+    ReadOptions,
+};
 use ckb_db_schema::{
     Col, COLUMN_BLOCK_BODY, COLUMN_BLOCK_EPOCH, COLUMN_BLOCK_EXT, COLUMN_BLOCK_HEADER,
     COLUMN_BLOCK_PROPOSAL_IDS, COLUMN_BLOCK_UNCLE, COLUMN_CELL, COLUMN_CELL_DATA, COLUMN_EPOCH,
     COLUMN_INDEX, COLUMN_META, COLUMN_TRANSACTION_INFO, COLUMN_UNCLES, META_CURRENT_EPOCH_KEY,
-    META_TIP_HEADER_KEY,
+    META_TIP_HEADER_KEY, TX_INDEX_UPPER_BOUND
 };
 use ckb_freezer::Freezer;
 use ckb_types::{
@@ -18,6 +21,9 @@ use ckb_types::{
     packed::{self, OutPoint},
     prelude::*,
 };
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static COUNT: AtomicU64 = AtomicU64::new(0);
 
 pub struct CellProviderWrapper<'a, S>(&'a S);
 
@@ -89,7 +95,7 @@ pub trait ChainStore<'a>: Send + Sync + Sized {
 
         let upper_bound = packed::TransactionKey::new_builder()
             .block_hash(hash.clone())
-            .index(10000u32.pack())
+            .index(TX_INDEX_UPPER_BOUND.pack())
             .build();
 
         let lower_bound = packed::TransactionKey::new_builder()
@@ -98,8 +104,8 @@ pub trait ChainStore<'a>: Send + Sync + Sized {
             .build();
 
         let mut opts = ReadOptions::default();
-        opts.set_iterate_lower_bound(lower_bound.as_slice());
-        opts.set_iterate_upper_bound(upper_bound.as_slice());
+        // opts.set_iterate_lower_bound(lower_bound.as_slice());
+        // opts.set_iterate_upper_bound(upper_bound.as_slice());
         self.get_iter_opt(
             COLUMN_BLOCK_BODY,
             IteratorMode::From(prefix, Direction::Forward),
@@ -111,6 +117,27 @@ pub trait ChainStore<'a>: Send + Sync + Sized {
             Unpack::<TransactionView>::unpack(&reader)
         })
         .collect()
+    }
+
+    /// Get block body by block header hash
+    fn get_block_body2(&'a self, hash: &packed::Byte32) -> Vec<TransactionView> {
+        let mut index = 0u32;
+        let mut key = packed::TransactionKey::new_builder()
+            .block_hash(hash.clone())
+            .index(index.pack())
+            .build();
+        let mut txs = Vec::new();
+
+        while let Some(value) = self.get(COLUMN_BLOCK_BODY, key.as_slice()) {
+            let reader = packed::TransactionViewReader::from_slice_should_be_ok(&value.as_ref());
+            txs.push(Unpack::<TransactionView>::unpack(&reader));
+            index += 1;
+            key = packed::TransactionKey::new_builder()
+                .block_hash(hash.clone())
+                .index(index.pack())
+                .build();
+        }
+        txs
     }
 
     /// Get unfrozen block from ky-store with given hash

@@ -4,7 +4,7 @@ use arc_swap::{ArcSwap, Guard};
 use ckb_chain_spec::consensus::Consensus;
 use ckb_db::{
     iter::{DBIter, IteratorMode},
-    DBPinnableSlice, ReadOptions
+    DBPinnableSlice, ReadOptions,
 };
 use ckb_db_schema::Col;
 use ckb_error::Error;

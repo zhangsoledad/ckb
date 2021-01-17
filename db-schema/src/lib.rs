@@ -44,3 +44,7 @@ pub const META_CURRENT_EPOCH_KEY: &[u8] = b"CURRENT_EPOCH";
 pub const CHAIN_SPEC_HASH_KEY: &[u8] = b"chain-spec-hash";
 /// CHAIN_SPEC_HASH_KEY tracks the current database version.
 pub const MIGRATION_VERSION_KEY: &[u8] = b"db-version";
+/// This value is try to set tx key range as tight as possible,
+/// so that db iterating can stop sooner, rather than walking over the whole range of tombstones.
+/// empty_tx_size = 72
+pub const TX_INDEX_UPPER_BOUND: u32 = 597 * 1000 / 72;

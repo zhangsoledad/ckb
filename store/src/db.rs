@@ -126,6 +126,19 @@ impl ChainDB {
         self.db.write(&write_batch.inner)
     }
 
+    pub fn write_sync(&self, write_batch: &StoreWriteBatch) -> Result<(), Error> {
+        self.db.write_sync(&write_batch.inner)
+    }
+
+    pub fn compact_range(
+        &self,
+        col: Col,
+        start: Option<&[u8]>,
+        end: Option<&[u8]>,
+    ) -> Result<(), Error> {
+        self.db.compact_range(col, start, end)
+    }
+
     /// TODO(doc): @quake
     pub fn init(&self, consensus: &Consensus) -> Result<(), Error> {
         let genesis = consensus.genesis_block();

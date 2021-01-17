@@ -7,8 +7,8 @@ use ckb_app_config::DBConfig;
 use ckb_db_schema::Col;
 use ckb_logger::{info, warn};
 use rocksdb::ops::{
-    CreateCF, DropCF, GetColumnFamilys, GetPinned, GetPinnedCF, IterateCF, OpenCF, Put, SetOptions,
-    WriteOps,
+    CompactRangeCF, CreateCF, DropCF, GetColumnFamilys, GetPinned, GetPinnedCF, IterateCF, OpenCF,
+    Put, SetOptions, WriteOps,
 };
 use rocksdb::{
     ffi, ColumnFamily, ColumnFamilyDescriptor, DBPinnableSlice, FullOptions, IteratorMode,
@@ -187,9 +187,23 @@ impl RocksDB {
         }
     }
 
+    pub fn compact_range(&self, col: Col, start: Option<&[u8]>, end: Option<&[u8]>) -> Result<()> {
+        let cf = cf_handle(&self.inner, col)?;
+        self.inner.compact_range_cf(&cf, start, end);
+        Ok(())
+    }
+
     /// TODO(doc): @quake
     pub fn write(&self, batch: &RocksDBWriteBatch) -> Result<()> {
         self.inner.write(&batch.inner).map_err(internal_error)
+    }
+
+    pub fn write_sync(&self, batch: &RocksDBWriteBatch) -> Result<()> {
+        let mut wo = WriteOptions::new();
+        wo.set_sync(true);
+        self.inner
+            .write_opt(&batch.inner, &wo)
+            .map_err(internal_error)
     }
 
     /// TODO(doc): @quake
