@@ -75,10 +75,10 @@ pub(crate) fn non_contextual_verify(
 
 pub(crate) fn verify_rtx(
     snapshot: &Snapshot,
-    rtx: ResolvedTransaction,
+    rtx: &ResolvedTransaction,
     cache_entry: Option<CacheEntry>,
     max_tx_verify_cycles: Cycle,
-) -> Result<(ResolvedTransaction, CacheEntry), Reject> {
+) -> Result<CacheEntry, Reject> {
     let tip_header = snapshot.tip_header();
     let tip_number = tip_header.number();
     let epoch = tip_header.epoch();
@@ -95,7 +95,7 @@ pub(crate) fn verify_rtx(
             consensus,
         )
         .verify()
-        .map(|_| (rtx, cached))
+        .map(|_| cached)
         .map_err(Reject::Verification)
     } else {
         // block: script verify
@@ -110,7 +110,6 @@ pub(crate) fn verify_rtx(
                 snapshot,
             )
             .verify(max_tx_verify_cycles, false)
-            .map(|cache_entry| (rtx, cache_entry))
             .map_err(Reject::Verification)
         })
     }
