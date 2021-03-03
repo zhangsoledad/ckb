@@ -8,4 +8,5 @@ criterion_main! {
     benchmarks::secp_2in2out::process_block,
     benchmarks::next_epoch_ext::next_epoch_ext,
     benchmarks::overall::overall,
+    benchmarks::resolve::resolve,
 }
