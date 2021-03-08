@@ -8,7 +8,7 @@ mod net_time_checker;
 mod orphan_block_pool;
 mod relayer;
 mod status;
-mod synchronizer;
+pub mod synchronizer;
 mod types;
 
 #[cfg(test)]
