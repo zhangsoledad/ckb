@@ -244,13 +244,13 @@ mod tests {
             ) -> Result<RocksDB, Error> {
                 let txn = db.transaction();
                 // append 1u8 to each value of column `0`
-                let migration = |key: &[u8], value: &[u8]| -> Result<(), Error> {
+                let mut migration = |key: &[u8], value: &[u8]| -> Result<(), Error> {
                     let mut new_value = value.to_vec();
                     new_value.push(1);
                     txn.put(COLUMN, key, &new_value)?;
                     Ok(())
                 };
-                db.traverse(COLUMN, migration)?;
+                db.full_traverse(COLUMN, &mut migration)?;
                 txn.commit()?;
                 Ok(db)
             }
