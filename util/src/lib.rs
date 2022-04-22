@@ -12,5 +12,6 @@ pub use linked_hash_map::{Entries as LinkedHashMapEntries, LinkedHashMap};
 pub use linked_hash_set::LinkedHashSet;
 
 pub use parking_lot::{
-    self, Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    self, Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockUpgradableReadGuard,
+    RwLockWriteGuard,
 };

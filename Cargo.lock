@@ -1214,6 +1214,7 @@ version = "0.104.0-pre"
 dependencies = [
  "bitflags",
  "ckb-app-config",
+ "ckb-async-runtime",
  "ckb-chain",
  "ckb-chain-spec",
  "ckb-channel",
@@ -1228,6 +1229,7 @@ dependencies = [
  "ckb-network",
  "ckb-reward-calculator",
  "ckb-shared",
+ "ckb-stop-handler",
  "ckb-store",
  "ckb-test-chain-utils",
  "ckb-traits",

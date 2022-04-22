@@ -1,53 +1,66 @@
 use std::{clone, cmp, default, hash};
 
+use crate::types::HeaderView;
+use ckb_types::packed::Byte32;
 use ckb_util::shrink_to_fit;
 use ckb_util::LinkedHashMap;
+use ckb_util::{RwLock, RwLockUpgradableReadGuard};
 
 use crate::types::SHRINK_THRESHOLD;
 
-pub(crate) struct KeyValueMemory<K, V>(LinkedHashMap<K, V>)
-where
-    K: cmp::Eq + hash::Hash;
+pub(crate) struct MemoryMap(RwLock<LinkedHashMap<Byte32, HeaderView>>);
 
-impl<K, V> default::Default for KeyValueMemory<K, V>
-where
-    K: cmp::Eq + hash::Hash,
-{
+impl default::Default for MemoryMap {
     fn default() -> Self {
-        Self(default::Default::default())
+        Self(RwLock::new(default::Default::default()))
     }
 }
 
-impl<K, V> KeyValueMemory<K, V>
-where
-    K: cmp::Eq + hash::Hash,
-    V: clone::Clone,
-{
+impl MemoryMap {
     pub(crate) fn len(&self) -> usize {
-        self.0.len()
+        self.0.read().len()
     }
 
-    pub(crate) fn contains_key(&self, key: &K) -> bool {
-        self.0.contains_key(key)
+    pub(crate) fn contains_key(&self, key: &Byte32) -> bool {
+        self.0.read().contains_key(key)
     }
 
-    pub(crate) fn get_refresh(&mut self, key: &K) -> Option<V> {
-        self.0.get_refresh(key).cloned()
+    pub(crate) fn get_refresh(&self, key: &Byte32) -> Option<HeaderView> {
+        self.0.write().get_refresh(key).cloned()
     }
 
-    pub(crate) fn insert(&mut self, key: K, value: V) -> Option<V> {
-        self.0.insert(key, value)
+    pub(crate) fn insert(&self, key: Byte32, value: HeaderView) {
+        self.0.write().insert(key, value);
     }
 
-    pub(crate) fn remove(&mut self, key: &K) -> Option<V> {
-        let ret = self.0.remove(key);
-        shrink_to_fit!(self.0, SHRINK_THRESHOLD);
-        ret
+    pub(crate) fn remove(&self, key: &Byte32) {
+        let mut guard = self.0.write();
+        guard.remove(key);
+        shrink_to_fit!(guard, SHRINK_THRESHOLD);
     }
 
-    pub(crate) fn pop_front(&mut self) -> Option<(K, V)> {
-        let ret = self.0.pop_front();
-        shrink_to_fit!(self.0, SHRINK_THRESHOLD);
-        ret
+    pub(crate) fn front(&self, size_limit: usize) -> Option<Vec<(Byte32, HeaderView)>> {
+        let guard = self.0.read();
+        let size = guard.len();
+        if size > size_limit {
+            let num = size - size_limit;
+            Some(
+                guard
+                    .iter()
+                    .take(num)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn delete_batch<'a>(&self, keys: impl Iterator<Item = &'a Byte32>) {
+        let mut guard = self.0.write();
+        for key in keys {
+            guard.remove(key);
+        }
+        shrink_to_fit!(guard, SHRINK_THRESHOLD);
     }
 }

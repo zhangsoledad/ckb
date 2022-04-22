@@ -45,7 +45,7 @@ mod header_map;
 
 use crate::utils::send_message;
 use ckb_types::core::EpochNumber;
-pub use header_map::HeaderMapLru as HeaderMap;
+pub use header_map::HeaderMap;
 
 const FILTER_SIZE: usize = 20000;
 const GET_HEADERS_CACHE_SIZE: usize = 10000;
@@ -1153,7 +1153,8 @@ impl SyncShared {
         let header_map = HeaderMap::new(
             tmpdir,
             sync_config.header_map.primary_limit,
-            sync_config.header_map.backend_close_threshold,
+            // sync_config.header_map.backend_close_threshold,
+            shared.async_handle().clone(),
         );
 
         let state = SyncState {
