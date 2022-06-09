@@ -554,6 +554,8 @@ dependencies = [
  "ckb-resource",
  "ckb-traits",
  "ckb-types",
+ "ckb-util",
+ "once_cell",
  "serde",
  "toml",
 ]
