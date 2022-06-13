@@ -543,6 +543,7 @@ dependencies = [
 name = "ckb-chain-spec"
 version = "0.104.0-pre"
 dependencies = [
+ "byteorder",
  "ckb-constant",
  "ckb-crypto",
  "ckb-dao-utils",
@@ -555,7 +556,6 @@ dependencies = [
  "ckb-traits",
  "ckb-types",
  "ckb-util",
- "once_cell",
  "serde",
  "toml",
 ]
