@@ -25,6 +25,7 @@ use std::collections::HashSet;
 pub struct TimeRelativeTransactionVerifier<'a, M> {
     pub(crate) maturity: MaturityVerifier<'a>,
     pub(crate) since: SinceVerifier<'a, M>,
+    pub(crate) rtx: &'a ResolvedTransaction,
 }
 
 impl<'a, DL: HeaderProvider> TimeRelativeTransactionVerifier<'a, DL> {
@@ -38,13 +39,16 @@ impl<'a, DL: HeaderProvider> TimeRelativeTransactionVerifier<'a, DL> {
         TimeRelativeTransactionVerifier {
             maturity: MaturityVerifier::new(rtx, tx_env.epoch(), consensus.cellbase_maturity()),
             since: SinceVerifier::new(rtx, consensus, data_loader, tx_env),
+            rtx,
         }
     }
 
     /// Perform time-related verification
     pub fn verify(&self) -> Result<(), Error> {
+        ckb_logger::info!("TimeRelative {}", self.rtx.transaction.hash());
         self.maturity.verify()?;
         self.since.verify()?;
+        ckb_logger::info!("TimeRelative {} finished", self.rtx.transaction.hash());
         Ok(())
     }
 }
@@ -223,12 +227,21 @@ impl<'a, DL: CellDataProvider + HeaderProvider + EpochProvider> FeeCalculator<'a
     }
 
     fn transaction_fee(&self) -> Result<Capacity, DaoError> {
+        ckb_logger::info!(
+            "FeeCalculator {} finished",
+            self.transaction.transaction.hash()
+        );
         // skip tx fee calculation for cellbase
-        if self.transaction.is_cellbase() {
+        let ret = if self.transaction.is_cellbase() {
             Ok(Capacity::zero())
         } else {
             DaoCalculator::new(self.consensus, self.data_loader).transaction_fee(self.transaction)
-        }
+        };
+        ckb_logger::info!(
+            "FeeCalculator {} finished",
+            self.transaction.transaction.hash()
+        );
+        ret
     }
 }
 
@@ -493,6 +506,10 @@ impl<'a> CapacityVerifier<'a> {
     }
 
     pub fn verify(&self) -> Result<(), Error> {
+        ckb_logger::info!(
+            "CapacityVerifier {}",
+            self.resolved_transaction.transaction.hash()
+        );
         // skip OutputsSumOverflow verification for resolved cellbase and DAO
         // withdraw transactions.
         // cellbase's outputs are verified by RewardVerifier
@@ -527,7 +544,10 @@ impl<'a> CapacityVerifier<'a> {
                 .into());
             }
         }
-
+        ckb_logger::info!(
+            "CapacityVerifier {} finished",
+            self.resolved_transaction.transaction.hash()
+        );
         Ok(())
     }
 

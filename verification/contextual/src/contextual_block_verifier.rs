@@ -356,6 +356,8 @@ impl<'a, CS: ChainStore<'a>> BlockTxsVerifier<'a, CS> {
     ) -> Result<(Cycle, Vec<Completed>), Error> {
         // We should skip updating tx_verify_cache about the cellbase tx,
         // putting it in cache that will never be used until lru cache expires.
+        ckb_logger::info!("block txs verifier {}", self.header.hash());
+
         let fetched_cache = if self.resolved.len() > 1 {
             let keys: Vec<Byte32> = self
                 .resolved
@@ -452,6 +454,8 @@ impl<'a, CS: ChainStore<'a>> BlockTxsVerifier<'a, CS> {
                 }
             });
         }
+
+        ckb_logger::info!("block txs verifier {} finished", self.header.hash());
 
         if sum > self.context.consensus.max_block_cycles() {
             Err(BlockErrorKind::ExceededMaximumCycles.into())
