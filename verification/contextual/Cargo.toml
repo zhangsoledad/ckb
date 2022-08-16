@@ -20,7 +20,7 @@ ckb-dao-utils = { path = "../../util/dao/utils", version = "= 0.105.0-pre" }
 ckb-logger = {path = "../../util/logger", version = "= 0.105.0-pre"}
 ckb-reward-calculator= { path = "../../util/reward-calculator", version = "= 0.105.0-pre" }
 ckb-error = { path = "../../error", version = "= 0.105.0-pre" }
-tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
+tokio = { version = "1", features = ["sync", "rt-multi-thread", "tracing"] }
 ckb-async-runtime = { path = "../../util/runtime", version = "= 0.105.0-pre" }
 ckb-verification-traits = { path = "../traits", version = "= 0.105.0-pre" }
 ckb-verification = { path = "..", version = "= 0.105.0-pre" }

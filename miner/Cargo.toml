@@ -31,4 +31,4 @@ console = ">=0.9.1, <1.0.0"
 eaglesong = "0.1"
 base64 = "0.13.0"
 jsonrpc-core = "18.0"
-tokio = { version = "1", features = ["sync"]  }
+tokio = { version = "1", features = ["sync", "tracing"]  }

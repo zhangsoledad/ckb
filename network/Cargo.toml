@@ -16,7 +16,7 @@ ckb-stop-handler = { path = "../util/stop-handler", version = "= 0.105.0-pre" }
 ckb-logger = { path = "../util/logger", version = "= 0.105.0-pre" }
 ckb-app-config = { path = "../util/app-config", version = "= 0.105.0-pre" }
 ckb-metrics = {path = "../util/metrics", version = "= 0.105.0-pre"}
-tokio = { version = "1", features = ["sync", "macros"] }
+tokio = { version = "1", features = ["sync", "macros", "tracing"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
 faketime = "0.2.0"

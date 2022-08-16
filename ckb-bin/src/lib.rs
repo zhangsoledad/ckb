@@ -59,6 +59,8 @@ pub fn run_app(version: Version) -> Result<(), ExitCode> {
     let is_silent_logging = is_silent_logging(cmd);
 
     let (handle, runtime) = new_global_runtime();
+    console_subscriber::init();
+
     let setup = Setup::from_matches(bin_name, cmd, matches)?;
     let _guard = SetupGuard::from_setup(&setup, &version, handle.clone(), is_silent_logging)?;
 
