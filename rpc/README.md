@@ -6493,6 +6493,8 @@ The information of the node itself.
 
     The private key is generated randomly on the first boot.
 
+* `probe`: `boolean` - Return whether the current node is a probe version.
+
 * `protocols`: `Array<` [`LocalNodeProtocol`](#type-localnodeprotocol) `>` - Supported protocols.
 
 * `version`: `string` - CKB node version.

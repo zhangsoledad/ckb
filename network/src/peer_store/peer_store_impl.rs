@@ -237,6 +237,12 @@ impl PeerStore {
         self.mut_ban_list().ban(ban_addr);
     }
 
+    #[cfg(probe)]
+    pub fn is_addr_banned(&self, addr: &Multiaddr) -> bool {
+        false
+    }
+
+    #[cfg(not(probe))]
     /// Whether the address is banned
     pub fn is_addr_banned(&self, addr: &Multiaddr) -> bool {
         self.ban_list().is_addr_banned(addr)

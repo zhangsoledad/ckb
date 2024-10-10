@@ -157,6 +157,34 @@ impl NetworkState {
         self
     }
 
+    #[cfg(probe)]
+    pub(crate) fn report_session(
+        &self,
+        p2p_control: &ServiceControl,
+        session_id: SessionId,
+        behaviour: Behaviour,
+    ) {
+        if let Some(addr) = self.with_peer_registry(|reg| {
+            reg.get_peer(session_id)
+                .filter(|peer| !peer.is_whitelist)
+                .map(|peer| peer.connected_addr.clone())
+        }) {
+            trace!("Report {:?} because {:?}", addr, behaviour);
+            let report_result = self.peer_store.lock().report(&addr, behaviour);
+            // if report_result.is_banned() {
+            //     if let Err(err) = disconnect_with_message(p2p_control, session_id, "banned") {
+            //         debug!("Disconnect failed {:?}, error: {:?}", session_id, err);
+            //     }
+            // }
+        } else {
+            debug!(
+                "Report {} failure: not found in peer registry or it is on the whitelist",
+                session_id
+            );
+        }
+    }
+
+    #[cfg(not(probe))]
     pub(crate) fn report_session(
         &self,
         p2p_control: &ServiceControl,
@@ -183,6 +211,50 @@ impl NetworkState {
         }
     }
 
+    #[cfg(probe)]
+    pub(crate) fn ban_session(
+        &self,
+        p2p_control: &ServiceControl,
+        session_id: SessionId,
+        duration: Duration,
+        reason: String,
+    ) {
+        if let Some(addr) = self.with_peer_registry(|reg| {
+            reg.get_peer(session_id)
+                .filter(|peer| !peer.is_whitelist)
+                .map(|peer| peer.connected_addr.clone())
+        }) {
+            info!(
+                "Ban peer {:?} for {} seconds, reason: {}",
+                addr,
+                duration.as_secs(),
+                reason
+            );
+            if let Some(metrics) = ckb_metrics::handle() {
+                metrics.ckb_network_ban_peer.inc();
+            }
+            if let Some(peer) = self.with_peer_registry_mut(|reg| reg.remove_peer(session_id)) {
+                let message = format!("Ban for {} seconds, reason: {}", duration.as_secs(), reason);
+                self.peer_store.lock().ban_addr(
+                    &peer.connected_addr,
+                    duration.as_millis() as u64,
+                    reason,
+                );
+                // if let Err(err) =
+                //     disconnect_with_message(p2p_control, peer.session_id, message.as_str())
+                // {
+                //     debug!("Disconnect failed {:?}, error: {:?}", peer.session_id, err);
+                // }
+            }
+        } else {
+            debug!(
+                "Ban session({}) failed: not found in peer registry or it is on the whitelist",
+                session_id
+            );
+        }
+    }
+
+    #[cfg(not(probe))]
     pub(crate) fn ban_session(
         &self,
         p2p_control: &ServiceControl,

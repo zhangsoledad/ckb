@@ -65,6 +65,8 @@ pub struct LocalNode {
     pub protocols: Vec<LocalNodeProtocol>,
     /// Count of currently connected peers.
     pub connections: Uint64,
+    /// Return whether the current node is a probe version.
+    pub probe: bool,
 }
 
 /// The information of a P2P protocol that is supported by the local node.

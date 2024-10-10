@@ -577,6 +577,7 @@ impl NetRpc for NetRpcImpl {
                 })
                 .collect::<Vec<_>>(),
             connections: (self.network_controller.connected_peers().len() as u64).into(),
+            probe: cfg!(probe),
         })
     }
 
